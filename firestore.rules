@@ -1,0 +1,120 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function getUserRole() {
+      return request.auth.token.role != null ? request.auth.token.role : 'sales';
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && (getUserRole() == 'admin' || request.auth.token.admin == true);
+    }
+    
+    function isStaff() {
+      return isAuthenticated() && getUserRole() in ['admin', 'sales', 'ops', 'finance'];
+    }
+
+    // Company Settings & Rules
+    match /companySettings/{settingId} {
+      allow read: if isStaff();
+      allow write: if isAdmin();
+    }
+
+    // Leads & Inquiries
+    match /leads/{leadId} {
+      allow read, create, update: if isStaff();
+      allow delete: if isAdmin();
+      
+      match /activities/{activityId} {
+        allow read, write: if isStaff();
+      }
+    }
+
+    // Guests & Customer Profiles
+    match /guests/{guestId} {
+      allow read, create, update: if isStaff();
+      allow delete: if isAdmin();
+    }
+
+    // Master Inventory: Hotels & Rates
+    match /hotels/{hotelId} {
+      allow read: if isStaff();
+      allow write: if isAdmin() || getUserRole() == 'ops';
+      
+      match /rates/{rateId} {
+        allow read: if isStaff();
+        allow write: if isAdmin() || getUserRole() == 'ops';
+      }
+    }
+
+    // Master Inventory: Vehicles & Tariffs
+    match /vehicles/{vehicleId} {
+      allow read: if isStaff();
+      allow write: if isAdmin() || getUserRole() == 'ops';
+    }
+
+    // Master Knowledge Base: Destinations & Attractions
+    match /destinations/{destinationId} {
+      allow read: if isStaff();
+      allow write: if isAdmin() || getUserRole() == 'ops';
+      
+      match /attractions/{attractionId} {
+        allow read: if isStaff();
+        allow write: if isAdmin() || getUserRole() == 'ops';
+      }
+    }
+
+    // Itineraries & Internal Calculations
+    match /itineraries/{itineraryId} {
+      allow read, write: if isStaff();
+      allow delete: if isAdmin();
+    }
+
+    // Customer Quotations & Version History
+    match /quotations/{quotationId} {
+      // Authenticated staff can read and modify internal versions
+      allow read, write: if isStaff();
+      allow delete: if isAdmin();
+      
+      // Public customer access to specifically shared sanitized versions via secure token
+      match /publicShare/{shareToken} {
+        allow read: if true;
+        allow write: if isStaff();
+      }
+    }
+
+    // Suppliers & Accounts Ledger
+    match /suppliers/{supplierId} {
+      allow read: if isStaff();
+      allow write: if isAdmin() || getUserRole() == 'finance';
+      
+      match /ledger/{entryId} {
+        allow read: if isStaff();
+        allow write: if isAdmin() || getUserRole() == 'finance';
+      }
+    }
+
+    // Payments & Receipts
+    match /payments/{paymentId} {
+      allow read: if isStaff();
+      allow write: if isAdmin() || getUserRole() == 'finance';
+    }
+
+    // Operations Vouchers & Manifests
+    match /vouchers/{voucherId} {
+      allow read: if isStaff();
+      allow write: if isStaff();
+    }
+
+    // Audit Log
+    match /auditLogs/{logId} {
+      allow read: if isAdmin();
+      allow create: if isStaff();
+      allow update, delete: if false; // Immutable audit log
+    }
+  }
+}

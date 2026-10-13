@@ -1,0 +1,1838 @@
+'use client';
+
+import React, { useState, useEffect, useMemo, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import Link from 'next/link';
+import {
+  Compass,
+  MapPin,
+  Calendar,
+  Users,
+  Hotel as HotelIcon,
+  Car,
+  DollarSign,
+  CheckSquare,
+  Eye,
+  ChevronRight,
+  ChevronLeft,
+  Plus,
+  Trash2,
+  Copy,
+  Clock,
+  Sparkles,
+  Lock,
+  Unlock,
+  ShieldAlert,
+  ArrowRight,
+  Save,
+  CheckCircle2,
+  Share2,
+  Download,
+  AlertTriangle,
+} from 'lucide-react';
+import { useApp } from '../../../context/AppContext';
+import {
+  CostingItem,
+  DayActivity,
+  DayType,
+  ItineraryDay,
+  MealPlanCode,
+  Quotation,
+  QuotationCustomization,
+} from '../../../types';
+import {
+  formatINR,
+  formatIndianDate,
+  calculateTripDuration,
+  addDaysToDate,
+  calculateTourCosting,
+  calculateHotelDayCost,
+  calculateVehicleTourCost,
+  sanitizeQuotationForCustomer,
+  generateWhatsAppMessage,
+} from '../../../lib/calculations';
+
+function ItineraryBuilderContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const editQuoteId = searchParams.get('edit');
+  const fromLeadId = searchParams.get('leadId');
+
+  const {
+    quotations,
+    leads,
+    hotels,
+    vehicles,
+    destinations,
+    tripTemplates,
+    companySettings,
+    createQuotation,
+    updateQuotation,
+    recordShareEvent,
+  } = useApp();
+
+  // Wizard Step: 1 to 8
+  const [currentStep, setCurrentStep] = useState<number>(1);
+
+  // Core Form State
+  const [guestName, setGuestName] = useState('Kapoor Family');
+  const [guestPhone, setGuestPhone] = useState('+91 98201 44552');
+  const [guestEmail, setGuestEmail] = useState('kapoor@example.com');
+  const [tripTitle, setTripTitle] = useState('Romantic Himachal: Shimla & Manali Circuit');
+  const [startDate, setStartDate] = useState('2026-11-01');
+  const [endDate, setEndDate] = useState('2026-11-07');
+  const [adults, setAdults] = useState<number>(2);
+  const [children, setChildren] = useState<number>(0);
+  const [infants, setInfants] = useState<number>(0);
+  const [roomsCount, setRoomsCount] = useState<number>(1);
+  const [leadId, setLeadId] = useState<string | undefined>(undefined);
+
+  // Route & Stops
+  const [routeStops, setRouteStops] = useState<string[]>([
+    'Chandigarh',
+    'Shimla',
+    'Kullu',
+    'Manali',
+    'Chandigarh',
+  ]);
+  const [newStopInput, setNewStopInput] = useState('');
+
+  // Selected Fleet
+  const [selectedVehicleId, setSelectedVehicleId] = useState<string>(
+    vehicles[0]?.id || ''
+  );
+  const [manualVehicleCost, setManualVehicleCost] = useState<number>(0);
+
+  // Day-wise Itinerary
+  const [days, setDays] = useState<ItineraryDay[]>([]);
+
+  // Costing State
+  const [costingItems, setCostingItems] = useState<CostingItem[]>([]);
+  const [markupType, setMarkupType] = useState<'percentage' | 'fixed_inr'>('percentage');
+  const [markupValue, setMarkupValue] = useState<number>(22);
+  const [gstEnabled, setGstEnabled] = useState<boolean>(true);
+  const [gstRate, setGstRate] = useState<number>(5);
+  const [discountAmount, setDiscountAmount] = useState<number>(0);
+  const [advancePercent, setAdvancePercent] = useState<number>(30);
+
+  // Inclusions & Terms
+  const [inclusions, setInclusions] = useState<string[]>(companySettings.defaultInclusions);
+  const [exclusions, setExclusions] = useState<string[]>(companySettings.defaultExclusions);
+  const [terms, setTerms] = useState<string[]>(companySettings.defaultTerms);
+
+  // Customer Customization Settings
+  const [customization, setCustomization] = useState<QuotationCustomization>({
+    disclosureMode: 'masked',
+    showExactHotelNames: false,
+    showDriverVehicleDetails: false,
+    showDayWiseDistanceEstimate: true,
+    showDetailedDayTimings: true,
+    showInclusionsExclusions: true,
+    showTermsAndPaymentSchedule: true,
+    showBankDetails: true,
+    showContactBar: true,
+    templateStyle: 'alpine_classic',
+  });
+
+  const [savedSuccessMsg, setSavedSuccessMsg] = useState<string | null>(null);
+
+  // Duration derivation
+  const duration = useMemo(() => {
+    return calculateTripDuration(startDate, endDate);
+  }, [startDate, endDate]);
+
+  // Load from existing quotation if editQuoteId is passed
+  useEffect(() => {
+    if (editQuoteId) {
+      const q = quotations.find((quote) => quote.id === editQuoteId);
+      if (q) {
+        setGuestName(q.guestName);
+        setGuestPhone(q.guestPhone);
+        setGuestEmail(q.guestEmail || '');
+        setTripTitle(q.tripTitle);
+        setStartDate(q.startDate);
+        setEndDate(q.endDate);
+        setAdults(q.adults);
+        setChildren(q.children);
+        setInfants(q.infants);
+        setRoomsCount(q.roomsCount);
+        setRouteStops(q.routeStops);
+        setSelectedVehicleId(q.vehicleId || vehicles[0]?.id || '');
+        setDays(q.days);
+        setCostingItems(q.costingItems);
+        setMarkupType(q.costing.markupType);
+        setMarkupValue(q.costing.markupValue);
+        setGstEnabled(q.costing.gstEnabled);
+        setGstRate(q.costing.gstRatePercentage);
+        setDiscountAmount(q.costing.discountAmount);
+        setAdvancePercent(q.costing.advancePercentageRequired);
+        setInclusions(q.inclusions);
+        setExclusions(q.exclusions);
+        setTerms(q.termsAndConditions);
+        setCustomization(q.customization);
+        setLeadId(q.leadId);
+      }
+    } else if (fromLeadId) {
+      const lead = leads.find((l) => l.id === fromLeadId);
+      if (lead) {
+        setLeadId(lead.id);
+        setGuestName(lead.guestName);
+        setGuestPhone(lead.phone);
+        setGuestEmail(lead.email || '');
+        setStartDate(lead.startDate);
+        setEndDate(lead.endDate);
+        setAdults(lead.adults);
+        setChildren(lead.children);
+        setInfants(lead.infants || 0);
+        setRoomsCount(Math.ceil(lead.adults / 2));
+        setTripTitle(`${lead.destination} Tailored Holiday`);
+      }
+    }
+  }, [editQuoteId, fromLeadId, quotations, leads, vehicles]);
+
+  // If days are empty, seed days based on duration
+  useEffect(() => {
+    if (days.length === 0 && duration.isValid) {
+      const initialDays: ItineraryDay[] = [];
+      for (let i = 1; i <= duration.days; i++) {
+        const isFirst = i === 1;
+        const isLast = i === duration.days;
+        const dayDate = addDaysToDate(startDate, i - 1);
+        const destName = i <= 2 ? 'Shimla' : i <= duration.days - 1 ? 'Manali' : 'Departure';
+        const matchingHotel = hotels.find((h) => h.destination.toLowerCase() === destName.toLowerCase());
+
+        initialDays.push({
+          id: `day-${i}-${Date.now()}`,
+          dayNumber: i,
+          date: dayDate,
+          dayType: isFirst ? 'Arrival & Transfer' : isLast ? 'Departure' : 'Local Sightseeing',
+          title: isFirst
+            ? 'Arrival & Transfer to Shimla'
+            : isLast
+            ? 'Departure with Cherished Memories'
+            : `${destName} Guided Sightseeing & Exploration`,
+          routeTitle: isFirst
+            ? 'Chandigarh to Shimla (115 km / 3.5 hrs)'
+            : isLast
+            ? 'Manali to Chandigarh Airport (290 km / 8 hrs)'
+            : `${destName} Local Circuit`,
+          distanceKm: isFirst ? 115 : isLast ? 290 : 35,
+          driveTimeHours: isFirst ? 3.5 : isLast ? 8.0 : 1.5,
+          isTravelEstimate: false,
+          hotelDestination: destName,
+          hotelId: matchingHotel?.id,
+          customHotelName: matchingHotel?.name || 'Curated 4-Star Resort',
+          roomCategory: matchingHotel?.rates[0]?.roomCategory || 'Deluxe Room',
+          mealPlan: 'MAP',
+          breakfastIncluded: !isFirst,
+          lunchIncluded: false,
+          dinnerIncluded: !isLast,
+          activities: [
+            {
+              id: `act-${i}-1`,
+              timeSlot: isFirst ? '11:00 AM' : '09:30 AM',
+              title: isFirst ? 'Chauffeur Meet & Greet' : 'Morning Sightseeing Tour',
+              description: isFirst
+                ? 'Welcome at airport/station with comfortable transfer.'
+                : `Explore top attractions in ${destName} with ample photo stops.`,
+              type: isFirst ? 'Transit' : 'Sightseeing',
+              isEstimate: false,
+            },
+          ],
+        });
+      }
+      setDays(initialDays);
+    }
+  }, [days.length, duration, startDate, hotels]);
+
+  // Recalculate costing items when hotels, days, vehicle change
+  useEffect(() => {
+    const items: CostingItem[] = [];
+
+    // 1. Hotel accommodations
+    days.forEach((day, index) => {
+      if (index === days.length - 1 && day.dayType === 'Departure') return; // Last day check-out
+      const hotelObj = hotels.find((h) => h.id === day.hotelId);
+      const dayHotelCost = calculateHotelDayCost(
+        hotelObj,
+        day.roomCategory || 'Deluxe',
+        day.mealPlan,
+        roomsCount,
+        adults
+      );
+      items.push({
+        id: `cost-hotel-${day.id}`,
+        category: 'Accommodation',
+        title: `Day ${day.dayNumber} Stay: ${hotelObj ? hotelObj.name : day.hotelDestination} (${day.mealPlan} - ${roomsCount} Room)`,
+        supplierCost: dayHotelCost.cost,
+        notes: dayHotelCost.description,
+      });
+    });
+
+    // 2. Transport vehicle
+    const vehicleObj = vehicles.find((v) => v.id === selectedVehicleId);
+    const vehicleCostRes = calculateVehicleTourCost(
+      vehicleObj,
+      duration.days,
+      duration.days * 200,
+      manualVehicleCost > 0 ? manualVehicleCost : undefined
+    );
+
+    if (vehicleObj) {
+      items.push({
+        id: `cost-transport-${vehicleObj.id}`,
+        category: 'Transport',
+        title: `Private Vehicle: ${vehicleObj.displayName} (${duration.days} Days)`,
+        supplierCost: vehicleCostRes.cost,
+        notes: vehicleCostRes.breakdownNote,
+      });
+    }
+
+    // 3. Permits / Activities buffer
+    items.push({
+      id: `cost-permits`,
+      category: 'Permits & Tolls',
+      title: 'Green Cess, State Border Entry Taxes & Parking Passes',
+      supplierCost: 2500,
+      notes: 'Included in wholesale package cost',
+    });
+
+    setCostingItems(items);
+  }, [days, hotels, vehicles, selectedVehicleId, duration.days, roomsCount, adults, manualVehicleCost]);
+
+  // Derived live calculations
+  const liveCosting = useMemo(() => {
+    return calculateTourCosting(costingItems, {
+      markupType,
+      markupValue,
+      gstEnabled,
+      gstRatePercentage: gstRate,
+      discountAmount,
+      adultsCount: adults,
+      advancePercentage: advancePercent,
+    });
+  }, [
+    costingItems,
+    markupType,
+    markupValue,
+    gstEnabled,
+    gstRate,
+    discountAmount,
+    adults,
+    advancePercent,
+  ]);
+
+  // Construct draft quotation object
+  const currentQuoteObject: Quotation = useMemo(() => {
+    const selectedVeh = vehicles.find((v) => v.id === selectedVehicleId);
+    return {
+      id: editQuoteId || `quote-preview`,
+      quoteNumber: editQuoteId ? (quotations.find((q) => q.id === editQuoteId)?.quoteNumber || 'DJ-2026-DRAFT') : 'DJ-2026-PREVIEW',
+      version: 1,
+      leadId,
+      guestName,
+      guestPhone,
+      guestEmail,
+      tripTitle,
+      destinationsSummary: routeStops.join(' → '),
+      routeStops,
+      startDate,
+      endDate,
+      durationNights: duration.nights,
+      durationDays: duration.days,
+      adults,
+      children,
+      infants,
+      roomsCount,
+      vehicleId: selectedVehicleId,
+      vehicleName: selectedVeh ? selectedVeh.displayName : 'Private AC Vehicle',
+      days,
+      costingItems,
+      costing: liveCosting,
+      inclusions,
+      exclusions,
+      termsAndConditions: terms,
+      paymentScheduleText: [
+        `Token Booking Advance (${advancePercent}%): ${formatINR(liveCosting.advanceAmountRequired)} to lock room holds and private chauffeur allotment.`,
+        `Second Instalment (40%): ${formatINR(Math.round(liveCosting.finalSellingPrice * 0.4))} due 15 days prior to travel.`,
+        `Final Remaining Balance: ${formatINR(liveCosting.balanceDueAmount - Math.round(liveCosting.finalSellingPrice * 0.4))} due on arrival in destination.`,
+      ],
+      customization,
+      status: 'Draft',
+      advanceReceived: 0,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      createdBy: 'Rohit Sharma',
+    };
+  }, [
+    editQuoteId,
+    quotations,
+    leadId,
+    guestName,
+    guestPhone,
+    guestEmail,
+    tripTitle,
+    routeStops,
+    startDate,
+    endDate,
+    duration,
+    adults,
+    children,
+    infants,
+    roomsCount,
+    selectedVehicleId,
+    vehicles,
+    days,
+    costingItems,
+    liveCosting,
+    inclusions,
+    exclusions,
+    terms,
+    advancePercent,
+    customization,
+  ]);
+
+  // Customer proposal snapshot (sanitized according to Pre-Advance or Disclosed mode)
+  const { sanitizedQuote, isPreAdvanceMasked } = useMemo(() => {
+    return sanitizeQuotationForCustomer(currentQuoteObject, hotels);
+  }, [currentQuoteObject, hotels]);
+
+  // Save Quotation Handler
+  const handleSaveQuotation = () => {
+    if (editQuoteId) {
+      updateQuotation(editQuoteId, currentQuoteObject);
+      setSavedSuccessMsg('Quotation successfully updated!');
+    } else {
+      const created = createQuotation(currentQuoteObject);
+      setSavedSuccessMsg(`Quotation saved with ID: ${created.quoteNumber}`);
+      router.push(`/itineraries/${created.id}/preview`);
+      return;
+    }
+    setTimeout(() => setSavedSuccessMsg(null), 3000);
+  };
+
+  // Day mutation helpers
+  const handleUpdateDay = (index: number, updates: Partial<ItineraryDay>) => {
+    setDays((prev) =>
+      prev.map((d, i) => (i === index ? { ...d, ...updates } : d))
+    );
+  };
+
+  const handleAddActivity = (dayIndex: number) => {
+    const newAct: DayActivity = {
+      id: `act-${Date.now()}`,
+      timeSlot: '03:00 PM',
+      title: 'Afternoon Sightseeing Point',
+      description: 'Visit to viewpoint and local handicraft markets.',
+      type: 'Sightseeing',
+      isEstimate: false,
+    };
+    setDays((prev) =>
+      prev.map((d, i) =>
+        i === dayIndex ? { ...d, activities: [...d.activities, newAct] } : d
+      )
+    );
+  };
+
+  const handleRemoveActivity = (dayIndex: number, actId: string) => {
+    setDays((prev) =>
+      prev.map((d, i) =>
+        i === dayIndex
+          ? { ...d, activities: d.activities.filter((a) => a.id !== actId) }
+          : d
+      )
+    );
+  };
+
+  const handleDuplicateDay = (dayIndex: number) => {
+    const target = days[dayIndex];
+    const newDay: ItineraryDay = {
+      ...target,
+      id: `day-${Date.now()}`,
+      dayNumber: days.length + 1,
+      date: addDaysToDate(target.date, 1),
+      title: `${target.title} (Extended)`,
+    };
+    setDays([...days, newDay]);
+  };
+
+  const handleApplyTemplate = (tmpl: any) => {
+    setTripTitle(tmpl.title);
+    setRouteStops(tmpl.suggestedRoute);
+  };
+
+  const steps = [
+    { num: 1, label: 'Guest & Trip', icon: Users },
+    { num: 2, label: 'Route & Stops', icon: MapPin },
+    { num: 3, label: 'Day Builder', icon: Calendar },
+    { num: 4, label: 'Hotels', icon: HotelIcon },
+    { num: 5, label: 'Vehicles', icon: Car },
+    { num: 6, label: 'Live Costing', icon: DollarSign },
+    { num: 7, label: 'Terms & Clauses', icon: CheckSquare },
+    { num: 8, label: 'Proposal Preview', icon: Eye },
+  ];
+
+  return (
+    <div className="space-y-6 pb-20 animate-in fade-in duration-200">
+      {/* Top Banner & Stepper Bar */}
+      <div className="bg-white p-5 rounded-2xl border border-stone-200 shadow-card">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-stone-100">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-forest-100 text-forest-800">
+                Itinerary Studio
+              </span>
+              <h1 className="text-lg font-bold text-forest-900 tracking-tight">
+                {tripTitle || 'Tailored Itinerary Formulation'}
+              </h1>
+            </div>
+            <p className="text-xs text-stone-500 mt-0.5">
+              Guest: <strong className="text-forest-900">{guestName}</strong> • {duration.nights}N/{duration.days}D • {adults} Adults
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2 self-start md:self-auto">
+            {savedSuccessMsg && (
+              <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-200 animate-in fade-in">
+                ✓ {savedSuccessMsg}
+              </span>
+            )}
+            <button
+              onClick={handleSaveQuotation}
+              className="px-4 py-2 rounded-xl bg-forest-800 hover:bg-forest-700 text-white font-semibold text-xs flex items-center gap-1.5 shadow-xs transition-colors"
+            >
+              <Save className="w-3.5 h-3.5" />
+              <span>Save Proposal</span>
+            </button>
+          </div>
+        </div>
+
+        {/* 8-Step Interactive Progress Stepper */}
+        <div className="pt-4 overflow-x-auto">
+          <div className="flex items-center justify-between min-w-[700px] gap-2">
+            {steps.map((s) => {
+              const isActive = currentStep === s.num;
+              const isPast = currentStep > s.num;
+              return (
+                <button
+                  key={s.num}
+                  onClick={() => setCurrentStep(s.num)}
+                  className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium transition-all ${
+                    isActive
+                      ? 'bg-forest-800 text-white shadow-sm'
+                      : isPast
+                      ? 'bg-forest-50 text-forest-800 hover:bg-forest-100'
+                      : 'bg-stone-50 text-stone-500 hover:bg-stone-100'
+                  }`}
+                >
+                  <div
+                    className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${
+                      isActive
+                        ? 'bg-gold-500 text-forest-900'
+                        : isPast
+                        ? 'bg-emerald-600 text-white'
+                        : 'bg-stone-200 text-stone-600'
+                    }`}
+                  >
+                    {isPast ? '✓' : s.num}
+                  </div>
+                  <span className="whitespace-nowrap">{s.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* STEP CONTENT CONTAINER */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Main Work Area (Left 2 Cols) */}
+        <div className="lg:col-span-2 space-y-6">
+          {/* STEP 1: Guest & Trip Setup */}
+          {currentStep === 1 && (
+            <div className="bg-white p-6 rounded-2xl border border-stone-200 shadow-card space-y-5 text-xs">
+              <div className="flex items-center gap-2 pb-3 border-b border-stone-100">
+                <Users className="w-4 h-4 text-forest-600" />
+                <h2 className="text-sm font-bold text-forest-900">Step 1: Guest & Passenger Configuration</h2>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="font-semibold text-stone-700 block mb-1">Trip / Proposal Title</label>
+                  <input
+                    type="text"
+                    value={tripTitle}
+                    onChange={(e) => setTripTitle(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-stone-200 text-xs font-medium outline-hidden focus:border-forest-600"
+                  />
+                </div>
+                <div>
+                  <label className="font-semibold text-stone-700 block mb-1">Guest / Family Name *</label>
+                  <input
+                    type="text"
+                    value={guestName}
+                    onChange={(e) => setGuestName(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-stone-200 text-xs font-medium outline-hidden focus:border-forest-600"
+                  />
+                </div>
+                <div>
+                  <label className="font-semibold text-stone-700 block mb-1">Primary Mobile / WhatsApp *</label>
+                  <input
+                    type="text"
+                    value={guestPhone}
+                    onChange={(e) => setGuestPhone(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-stone-200 text-xs font-medium outline-hidden focus:border-forest-600"
+                  />
+                </div>
+                <div>
+                  <label className="font-semibold text-stone-700 block mb-1">Email Address</label>
+                  <input
+                    type="email"
+                    value={guestEmail}
+                    onChange={(e) => setGuestEmail(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-stone-200 text-xs font-medium outline-hidden focus:border-forest-600"
+                  />
+                </div>
+              </div>
+
+              {/* Dates & Duration with validation */}
+              <div className="p-4 rounded-xl bg-forest-50/60 border border-forest-100 space-y-3">
+                <div className="font-semibold text-forest-900 text-xs flex items-center justify-between">
+                  <span>Travel Window & Duration Consistency</span>
+                  {duration.isValid && (
+                    <span className="text-[11px] font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-full">
+                      ✓ Valid: {duration.nights} Nights / {duration.days} Days
+                    </span>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="font-medium text-stone-700 block mb-1">Start Date</label>
+                    <input
+                      type="date"
+                      value={startDate}
+                      onChange={(e) => setStartDate(e.target.value)}
+                      className="w-full px-3 py-1.5 rounded-lg border border-stone-200 bg-white text-xs outline-hidden focus:border-forest-600"
+                    />
+                  </div>
+                  <div>
+                    <label className="font-medium text-stone-700 block mb-1">End Date</label>
+                    <input
+                      type="date"
+                      value={endDate}
+                      onChange={(e) => setEndDate(e.target.value)}
+                      className="w-full px-3 py-1.5 rounded-lg border border-stone-200 bg-white text-xs outline-hidden focus:border-forest-600"
+                    />
+                  </div>
+                </div>
+
+                {!duration.isValid && (
+                  <p className="text-[11px] text-rose-600 font-medium">⚠️ {duration.error}</p>
+                )}
+              </div>
+
+              {/* Passengers Breakdown */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div>
+                  <label className="font-semibold text-stone-700 block mb-1">Adults (12+ yrs)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="50"
+                    value={adults}
+                    onChange={(e) => {
+                      const val = Number(e.target.value);
+                      setAdults(val);
+                      setRoomsCount(Math.ceil(val / 2));
+                    }}
+                    className="w-full px-3 py-1.5 rounded-lg border border-stone-200 text-xs outline-hidden focus:border-forest-600"
+                  />
+                </div>
+                <div>
+                  <label className="font-semibold text-stone-700 block mb-1">Children (5-11 yrs)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="20"
+                    value={children}
+                    onChange={(e) => setChildren(Number(e.target.value))}
+                    className="w-full px-3 py-1.5 rounded-lg border border-stone-200 text-xs outline-hidden focus:border-forest-600"
+                  />
+                </div>
+                <div>
+                  <label className="font-semibold text-stone-700 block mb-1">Infants (&lt;5 yrs)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="10"
+                    value={infants}
+                    onChange={(e) => setInfants(Number(e.target.value))}
+                    className="w-full px-3 py-1.5 rounded-lg border border-stone-200 text-xs outline-hidden focus:border-forest-600"
+                  />
+                </div>
+                <div>
+                  <label className="font-semibold text-stone-700 block mb-1">Hotel Rooms Required</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="25"
+                    value={roomsCount}
+                    onChange={(e) => setRoomsCount(Number(e.target.value))}
+                    className="w-full px-3 py-1.5 rounded-lg border border-stone-200 text-xs outline-hidden focus:border-forest-600"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* STEP 2: Route & Destinations */}
+          {currentStep === 2 && (
+            <div className="bg-white p-6 rounded-2xl border border-stone-200 shadow-card space-y-5 text-xs">
+              <div className="flex items-center justify-between pb-3 border-b border-stone-100">
+                <div className="flex items-center gap-2">
+                  <MapPin className="w-4 h-4 text-forest-600" />
+                  <h2 className="text-sm font-bold text-forest-900">Step 2: Destination Sequencing & Route Stops</h2>
+                </div>
+
+                {/* Pre-configured Indian circuits */}
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] text-stone-400">Load Template:</span>
+                  <select
+                    onChange={(e) => {
+                      const t = tripTemplates.find((x) => x.id === e.target.value);
+                      if (t) handleApplyTemplate(t);
+                    }}
+                    className="px-2.5 py-1 rounded-lg border border-stone-200 bg-stone-50 text-[11px] font-medium outline-hidden"
+                  >
+                    <option value="">Select Route Circuit...</option>
+                    {tripTemplates.map((tmpl) => (
+                      <option key={tmpl.id} value={tmpl.id}>
+                        {tmpl.title} ({tmpl.durationNights}N/{tmpl.durationDays}D)
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Sequence Ribbon */}
+              <div>
+                <label className="font-semibold text-stone-700 block mb-2">Sequence of Destinations / Stops</label>
+                <div className="flex flex-wrap items-center gap-2 p-3 rounded-xl bg-stone-50 border border-stone-200">
+                  {routeStops.map((stop, idx) => (
+                    <React.Fragment key={idx}>
+                      <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-stone-200 shadow-2xs font-semibold text-forest-900">
+                        <span className="w-4 h-4 rounded-full bg-forest-800 text-gold-400 text-[10px] flex items-center justify-center">
+                          {idx + 1}
+                        </span>
+                        <span>{stop}</span>
+                        <button
+                          onClick={() => setRouteStops(routeStops.filter((_, i) => i !== idx))}
+                          className="text-stone-400 hover:text-rose-600 ml-1"
+                        >
+                          ×
+                        </button>
+                      </div>
+                      {idx < routeStops.length - 1 && (
+                        <ArrowRight className="w-3.5 h-3.5 text-stone-400" />
+                      )}
+                    </React.Fragment>
+                  ))}
+                </div>
+
+                <div className="flex items-center gap-2 mt-3">
+                  <input
+                    type="text"
+                    value={newStopInput}
+                    onChange={(e) => setNewStopInput(e.target.value)}
+                    placeholder="Add en-route stop (e.g. Kasol, Gulmarg, Pushkar)..."
+                    className="flex-1 px-3 py-1.5 rounded-lg border border-stone-200 outline-hidden focus:border-forest-600 text-xs"
+                  />
+                  <button
+                    onClick={() => {
+                      if (newStopInput.trim()) {
+                        setRouteStops([...routeStops, newStopInput.trim()]);
+                        setNewStopInput('');
+                      }
+                    }}
+                    className="px-4 py-1.5 rounded-lg bg-forest-800 hover:bg-forest-700 text-white font-semibold text-xs"
+                  >
+                    + Add Stop
+                  </button>
+                </div>
+              </div>
+
+              {/* Verified Knowledge Base Sightseeing Suggestions */}
+              <div className="p-4 rounded-xl bg-forest-50 border border-forest-100">
+                <div className="flex items-center gap-2 font-bold text-forest-900 text-xs mb-2">
+                  <Sparkles className="w-4 h-4 text-gold-500" />
+                  <span>Verified Destination Highlights & Sightseeing Knowledge Base</span>
+                </div>
+                <p className="text-[11px] text-stone-600 mb-3">
+                  Click on any verified regional sightseeing point below to automatically inject it into your day schedule:
+                </p>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {destinations
+                    .filter((d) => routeStops.some((s) => s.toLowerCase().includes(d.name.toLowerCase())))
+                    .flatMap((d) => d.attractions)
+                    .map((att) => (
+                      <div
+                        key={att.id}
+                        className="p-2.5 rounded-lg bg-white border border-stone-200 flex items-start justify-between gap-2 text-xs"
+                      >
+                        <div>
+                          <div className="font-semibold text-forest-900">{att.name}</div>
+                          <div className="text-[10px] text-stone-500">
+                            {att.destination} • {att.category} • ~{att.suggestedDurationHours} hrs
+                          </div>
+                        </div>
+                        <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded">
+                          Verified
+                        </span>
+                      </div>
+                    ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* STEP 3: Day-wise Itinerary Editor */}
+          {currentStep === 3 && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between bg-white p-4 rounded-xl border border-stone-200 shadow-card">
+                <div>
+                  <h2 className="text-sm font-bold text-forest-900">
+                    Step 3: Day-wise Travel Timeline & Milestone Editor
+                  </h2>
+                  <p className="text-[11px] text-stone-500">
+                    Customize titles, transfer routes, excursions, meals, and confidential agent notes for each day.
+                  </p>
+                </div>
+
+                <button
+                  onClick={() => {
+                    const newDayNumber = days.length + 1;
+                    const lastDay = days[days.length - 1];
+                    const nextDate = lastDay ? addDaysToDate(lastDay.date, 1) : startDate;
+                    setDays([
+                      ...days,
+                      {
+                        id: `day-${Date.now()}`,
+                        dayNumber: newDayNumber,
+                        date: nextDate,
+                        dayType: 'Local Sightseeing',
+                        title: `Day ${newDayNumber} Exploration`,
+                        routeTitle: 'Local Sightseeing Excursion',
+                        hotelDestination: 'Shimla',
+                        mealPlan: 'MAP',
+                        breakfastIncluded: true,
+                        lunchIncluded: false,
+                        dinnerIncluded: true,
+                        isTravelEstimate: true,
+                        activities: [],
+                      },
+                    ]);
+                  }}
+                  className="px-3 py-1.5 rounded-lg bg-forest-800 hover:bg-forest-700 text-white font-medium text-xs flex items-center gap-1"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Add Extra Day</span>
+                </button>
+              </div>
+
+              {/* Day Cards List */}
+              <div className="space-y-4">
+                {days.map((day, dayIndex) => (
+                  <div
+                    key={day.id}
+                    className="bg-white rounded-2xl border border-stone-200 shadow-card overflow-hidden text-xs"
+                  >
+                    {/* Day Header Ribbon */}
+                    <div className="bg-stone-50 p-4 border-b border-stone-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <span className="w-7 h-7 rounded-lg bg-forest-800 text-gold-400 font-bold text-xs flex items-center justify-center shadow-2xs">
+                          D{day.dayNumber}
+                        </span>
+                        <div>
+                          <div className="font-bold text-forest-900 text-xs flex items-center gap-2">
+                            <span>{formatIndianDate(day.date)}</span>
+                            <span className="text-stone-400">•</span>
+                            <span className="text-emerald-700">{day.dayType}</span>
+                          </div>
+                          <div className="text-[11px] text-stone-500">{day.routeTitle}</div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <select
+                          value={day.dayType}
+                          onChange={(e) => handleUpdateDay(dayIndex, { dayType: e.target.value as DayType })}
+                          className="px-2 py-1 rounded-lg border border-stone-200 bg-white text-[11px] font-medium"
+                        >
+                          <option value="Arrival & Transfer">Arrival & Transfer</option>
+                          <option value="Local Sightseeing">Local Sightseeing</option>
+                          <option value="Scenic Transfer">Scenic Transfer</option>
+                          <option value="Leisure / Free Day">Leisure / Free Day</option>
+                          <option value="Adventure / Excursion">Adventure / Excursion</option>
+                          <option value="Departure">Departure</option>
+                        </select>
+
+                        <button
+                          onClick={() => handleDuplicateDay(dayIndex)}
+                          title="Duplicate this day"
+                          className="p-1.5 text-stone-400 hover:text-stone-700 hover:bg-stone-100 rounded"
+                        >
+                          <Copy className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => setDays(days.filter((_, i) => i !== dayIndex))}
+                          title="Remove day"
+                          className="p-1.5 text-stone-400 hover:text-rose-600 hover:bg-rose-50 rounded"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Day Content Body */}
+                    <div className="p-4 space-y-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className="font-semibold text-stone-700 block mb-1">Day Heading / Title</label>
+                          <input
+                            type="text"
+                            value={day.title}
+                            onChange={(e) => handleUpdateDay(dayIndex, { title: e.target.value })}
+                            className="w-full px-3 py-1.5 rounded-lg border border-stone-200 outline-hidden focus:border-forest-600 font-medium"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="font-semibold text-stone-700 block mb-1">
+                            Route & Estimated Distance / Drive Time
+                          </label>
+                          <div className="flex gap-2">
+                            <input
+                              type="text"
+                              value={day.routeTitle}
+                              onChange={(e) => handleUpdateDay(dayIndex, { routeTitle: e.target.value })}
+                              placeholder="e.g. Chandigarh to Shimla (115 km / 3.5 hrs)"
+                              className="flex-1 px-3 py-1.5 rounded-lg border border-stone-200 outline-hidden focus:border-forest-600"
+                            />
+                            <div className="flex items-center gap-1 text-[11px] text-stone-500 whitespace-nowrap">
+                              <input
+                                type="checkbox"
+                                id={`est-${day.id}`}
+                                checked={day.isTravelEstimate}
+                                onChange={(e) => handleUpdateDay(dayIndex, { isTravelEstimate: e.target.checked })}
+                              />
+                              <label htmlFor={`est-${day.id}`}>Estimate</label>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Meals Tag Strip */}
+                      <div className="flex items-center gap-4 p-2.5 rounded-lg bg-stone-50 border border-stone-200">
+                        <span className="font-semibold text-stone-700 text-[11px]">Included Meals:</span>
+                        <label className="flex items-center gap-1.5 text-[11px] text-stone-700 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={day.breakfastIncluded}
+                            onChange={(e) => handleUpdateDay(dayIndex, { breakfastIncluded: e.target.checked })}
+                          />
+                          <span>Breakfast</span>
+                        </label>
+                        <label className="flex items-center gap-1.5 text-[11px] text-stone-700 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={day.lunchIncluded}
+                            onChange={(e) => handleUpdateDay(dayIndex, { lunchIncluded: e.target.checked })}
+                          />
+                          <span>Lunch</span>
+                        </label>
+                        <label className="flex items-center gap-1.5 text-[11px] text-stone-700 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={day.dinnerIncluded}
+                            onChange={(e) => handleUpdateDay(dayIndex, { dinnerIncluded: e.target.checked })}
+                          />
+                          <span>Dinner</span>
+                        </label>
+                      </div>
+
+                      {/* Chronological Milestones / Activities */}
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="font-semibold text-stone-700 text-[11px]">
+                            Timeline Events & Excursions ({day.activities.length})
+                          </span>
+                          <button
+                            onClick={() => handleAddActivity(dayIndex)}
+                            className="text-[11px] text-emerald-700 font-semibold hover:underline flex items-center gap-1"
+                          >
+                            <Plus className="w-3 h-3" />
+                            <span>Add Event</span>
+                          </button>
+                        </div>
+
+                        {day.activities.map((act) => (
+                          <div
+                            key={act.id}
+                            className="p-3 rounded-xl bg-stone-50/70 border border-stone-200 space-y-2"
+                          >
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="text"
+                                value={act.timeSlot || ''}
+                                onChange={(e) => {
+                                  const updated = day.activities.map((a) =>
+                                    a.id === act.id ? { ...a, timeSlot: e.target.value } : a
+                                  );
+                                  handleUpdateDay(dayIndex, { activities: updated });
+                                }}
+                                placeholder="Time (e.g. 10:00 AM)"
+                                className="w-24 px-2 py-1 rounded border border-stone-200 bg-white font-mono text-[11px]"
+                              />
+                              <input
+                                type="text"
+                                value={act.title}
+                                onChange={(e) => {
+                                  const updated = day.activities.map((a) =>
+                                    a.id === act.id ? { ...a, title: e.target.value } : a
+                                  );
+                                  handleUpdateDay(dayIndex, { activities: updated });
+                                }}
+                                placeholder="Activity title..."
+                                className="flex-1 px-2 py-1 rounded border border-stone-200 bg-white font-medium text-xs"
+                              />
+                              <button
+                                onClick={() => handleRemoveActivity(dayIndex, act.id)}
+                                className="text-stone-400 hover:text-rose-600 p-1"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                            <textarea
+                              rows={2}
+                              value={act.description}
+                              onChange={(e) => {
+                                const updated = day.activities.map((a) =>
+                                  a.id === act.id ? { ...a, description: e.target.value } : a
+                                );
+                                handleUpdateDay(dayIndex, { activities: updated });
+                              }}
+                              placeholder="Describe experience, route viewpoints, highlights..."
+                              className="w-full px-2.5 py-1.5 rounded border border-stone-200 bg-white text-[11px]"
+                            />
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Agent Confidential Ops Box */}
+                      <div className="p-3 rounded-xl bg-amber-50/70 border border-amber-200/80">
+                        <div className="flex items-center gap-1.5 font-bold text-amber-900 text-[11px] mb-1">
+                          <Lock className="w-3.5 h-3.5 text-amber-600" />
+                          <span>Confidential Agent Ops Box (Internal Only — Hidden from Customer)</span>
+                        </div>
+                        <input
+                          type="text"
+                          value={day.confidentialOpsNotes || ''}
+                          onChange={(e) => handleUpdateDay(dayIndex, { confidentialOpsNotes: e.target.value })}
+                          placeholder="e.g. Chauffeur gate pass #991, permit slip with driver Ramesh, emergency manager cell..."
+                          className="w-full px-2.5 py-1 rounded-lg border border-amber-200 bg-white text-[11px] outline-hidden"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* STEP 4: Hotels & Accommodation */}
+          {currentStep === 4 && (
+            <div className="bg-white p-6 rounded-2xl border border-stone-200 shadow-card space-y-5 text-xs">
+              <div className="pb-3 border-b border-stone-100">
+                <h2 className="text-sm font-bold text-forest-900">Step 4: Accommodation & Hotel Allocation</h2>
+                <p className="text-[11px] text-stone-500">
+                  Select hand-picked hotels for each stay night, pick meal plan (EP, CP, MAP, AP), and view calculated wholesale rates.
+                </p>
+              </div>
+
+              <div className="space-y-4">
+                {days.map((day, idx) => {
+                  if (idx === days.length - 1 && day.dayType === 'Departure') return null;
+                  const selectedHotelObj = hotels.find((h) => h.id === day.hotelId);
+
+                  return (
+                    <div
+                      key={day.id}
+                      className="p-4 rounded-xl border border-stone-200 bg-stone-50/60 space-y-3"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="font-bold text-forest-900 text-xs">
+                          Night {day.dayNumber} ({formatIndianDate(day.date)}): {day.hotelDestination} Stay
+                        </div>
+                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-forest-100 text-forest-800">
+                          {roomsCount} Room(s)
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div>
+                          <label className="font-medium text-stone-700 block mb-1">Hotel Property</label>
+                          <select
+                            value={day.hotelId || ''}
+                            onChange={(e) => {
+                              const hObj = hotels.find((h) => h.id === e.target.value);
+                              handleUpdateDay(idx, {
+                                hotelId: e.target.value,
+                                customHotelName: hObj?.name,
+                                roomCategory: hObj?.rates[0]?.roomCategory || 'Deluxe Room',
+                              });
+                            }}
+                            className="w-full px-2.5 py-1.5 rounded-lg border border-stone-200 bg-white text-xs outline-hidden focus:border-forest-600"
+                          >
+                            <option value="">Select Property...</option>
+                            {hotels.map((h) => (
+                              <option key={h.id} value={h.id}>
+                                {h.name} ({h.destination} • {h.starCategory})
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="font-medium text-stone-700 block mb-1">Room Category</label>
+                          <input
+                            type="text"
+                            value={day.roomCategory || ''}
+                            onChange={(e) => handleUpdateDay(idx, { roomCategory: e.target.value })}
+                            placeholder="e.g. Deluxe Valley View"
+                            className="w-full px-2.5 py-1.5 rounded-lg border border-stone-200 bg-white text-xs outline-hidden focus:border-forest-600"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="font-medium text-stone-700 block mb-1">Meal Plan</label>
+                          <select
+                            value={day.mealPlan}
+                            onChange={(e) => handleUpdateDay(idx, { mealPlan: e.target.value as MealPlanCode })}
+                            className="w-full px-2.5 py-1.5 rounded-lg border border-stone-200 bg-white text-xs outline-hidden focus:border-forest-600 font-semibold text-forest-900"
+                          >
+                            <option value="EP">EP — Room Only</option>
+                            <option value="CP">CP — Room + Breakfast</option>
+                            <option value="MAP">MAP — Room + Breakfast + Dinner</option>
+                            <option value="AP">AP — All Meals (B + L + D)</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      {/* Property Preview & Redaction Tag */}
+                      {selectedHotelObj && (
+                        <div className="p-3 rounded-lg bg-white border border-stone-200 flex items-center justify-between text-xs">
+                          <div className="flex items-center gap-3">
+                            <div className="w-12 h-10 rounded bg-stone-100 overflow-hidden flex-shrink-0">
+                              <img
+                                src={selectedHotelObj.imageUrl}
+                                alt={selectedHotelObj.name}
+                                className="w-full h-full object-cover"
+                              />
+                            </div>
+                            <div>
+                              <div className="font-semibold text-forest-900">{selectedHotelObj.name}</div>
+                              <div className="text-[10px] text-stone-500">
+                                Pre-Advance Mask: &ldquo;{selectedHotelObj.maskedCategoryName}&rdquo;
+                              </div>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <span className="text-[10px] text-stone-400 block">Estimated Wholesale Rate:</span>
+                            <span className="font-bold text-forest-900 tabular-nums">
+                              {formatINR(
+                                calculateHotelDayCost(selectedHotelObj, day.roomCategory || 'Deluxe', day.mealPlan, roomsCount, adults).cost
+                              )}
+                            </span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* STEP 5: Vehicles & Transport */}
+          {currentStep === 5 && (
+            <div className="bg-white p-6 rounded-2xl border border-stone-200 shadow-card space-y-5 text-xs">
+              <div className="pb-3 border-b border-stone-100">
+                <h2 className="text-sm font-bold text-forest-900">Step 5: Dedicated Vehicle & Transport Allotment</h2>
+                <p className="text-[11px] text-stone-500">
+                  Select fleet tier, specify pricing model, driver allowances, and state border toll allowances.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                {vehicles.map((veh) => {
+                  const isSelected = selectedVehicleId === veh.id;
+                  const costPreview = calculateVehicleTourCost(veh, duration.days, duration.days * 200);
+
+                  return (
+                    <div
+                      key={veh.id}
+                      onClick={() => setSelectedVehicleId(veh.id)}
+                      className={`p-4 rounded-xl border cursor-pointer transition-all ${
+                        isSelected
+                          ? 'border-forest-800 bg-forest-50/50 shadow-sm ring-1 ring-forest-800'
+                          : 'border-stone-200 hover:border-stone-300 bg-white'
+                      }`}
+                    >
+                      <div className="h-28 rounded-lg overflow-hidden mb-3 bg-stone-100">
+                        <img
+                          src={veh.imageUrl}
+                          alt={veh.displayName}
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                      <div className="font-bold text-forest-900 text-xs">{veh.displayName}</div>
+                      <div className="text-[11px] text-stone-500 mt-0.5">
+                        {veh.category} • {veh.seatingCapacity} Seater
+                      </div>
+                      <div className="text-[10px] text-stone-400 mt-1 line-clamp-2">
+                        {veh.luggageCapacityNotes}
+                      </div>
+
+                      <div className="mt-3 pt-2 border-t border-stone-200 flex justify-between items-center">
+                        <span className="text-[10px] text-stone-500">Calculated Transport:</span>
+                        <span className="font-bold text-forest-900 tabular-nums">
+                          {formatINR(costPreview.cost)}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Manual Override */}
+              <div className="p-4 rounded-xl bg-stone-50 border border-stone-200 space-y-2">
+                <div className="font-semibold text-stone-700">Manual Transport Cost Override (Optional)</div>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="number"
+                    value={manualVehicleCost || ''}
+                    onChange={(e) => setManualVehicleCost(Number(e.target.value))}
+                    placeholder="Enter fixed amount in ₹ to override standard rate card..."
+                    className="flex-1 px-3 py-1.5 rounded-lg border border-stone-200 bg-white text-xs outline-hidden"
+                  />
+                  {manualVehicleCost > 0 && (
+                    <button
+                      onClick={() => setManualVehicleCost(0)}
+                      className="text-xs text-rose-600 hover:underline"
+                    >
+                      Reset to Auto Rate Card
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* STEP 6: Live Costing & Profit Margins */}
+          {currentStep === 6 && (
+            <div className="bg-white p-6 rounded-2xl border border-stone-200 shadow-card space-y-5 text-xs">
+              <div className="flex items-center justify-between pb-3 border-b border-stone-100">
+                <div>
+                  <h2 className="text-sm font-bold text-forest-900">Step 6: Live Costing Engine & Profit Margins</h2>
+                  <p className="text-[11px] text-stone-500">
+                    Transparent internal wholesale sheet. Internal supplier cost and margins are strictly hidden from customers.
+                  </p>
+                </div>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 flex items-center gap-1">
+                  <Lock className="w-3 h-3" />
+                  <span>Confidential Internal View</span>
+                </span>
+              </div>
+
+              {/* Itemized Line Items Table */}
+              <div className="overflow-x-auto">
+                <table className="w-full text-left">
+                  <thead className="bg-stone-50 text-stone-500 uppercase text-[10px] border-y border-stone-200">
+                    <tr>
+                      <th className="py-2.5 px-3">Item Category</th>
+                      <th className="py-2.5 px-3">Description</th>
+                      <th className="py-2.5 px-3 text-right">Wholesale Net Cost (₹)</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-stone-100">
+                    {costingItems.map((item) => (
+                      <tr key={item.id} className="hover:bg-stone-50/50">
+                        <td className="py-2.5 px-3 font-semibold text-forest-900">
+                          {item.category}
+                        </td>
+                        <td className="py-2.5 px-3 text-stone-600">
+                          <div>{item.title}</div>
+                          {item.notes && <div className="text-[10px] text-stone-400">{item.notes}</div>}
+                        </td>
+                        <td className="py-2.5 px-3 text-right font-mono font-medium text-forest-900 tabular-nums">
+                          {formatINR(item.supplierCost)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot className="border-t-2 border-stone-200 bg-stone-50 font-bold">
+                    <tr>
+                      <td colSpan={2} className="py-2.5 px-3 text-stone-800">
+                        Total Wholesale Net Cost:
+                      </td>
+                      <td className="py-2.5 px-3 text-right font-mono text-forest-900 tabular-nums text-sm">
+                        {formatINR(liveCosting.totalSupplierCost)}
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+
+              {/* Margins, GST & Discount Controls */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 p-4 rounded-xl bg-forest-50/70 border border-forest-100">
+                {/* Markup */}
+                <div>
+                  <label className="font-semibold text-stone-700 block mb-1">
+                    Agency Margin / Markup
+                  </label>
+                  <div className="flex gap-2">
+                    <select
+                      value={markupType}
+                      onChange={(e) => setMarkupType(e.target.value as any)}
+                      className="px-2 py-1.5 rounded-lg border border-stone-200 bg-white text-xs"
+                    >
+                      <option value="percentage">% Percent</option>
+                      <option value="fixed_inr">₹ Fixed</option>
+                    </select>
+                    <input
+                      type="number"
+                      value={markupValue}
+                      onChange={(e) => setMarkupValue(Number(e.target.value))}
+                      className="w-24 px-2 py-1.5 rounded-lg border border-stone-200 bg-white text-xs font-semibold"
+                    />
+                  </div>
+                  <div className="text-[10px] text-emerald-800 mt-1">
+                    Estimated Profit: <strong>{formatINR(liveCosting.grossProfitAmount)}</strong>
+                  </div>
+                </div>
+
+                {/* GST Toggle */}
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="font-semibold text-stone-700">Tour Operator GST</label>
+                    <input
+                      type="checkbox"
+                      id="gstToggle"
+                      checked={gstEnabled}
+                      onChange={(e) => setGstEnabled(e.target.checked)}
+                      className="w-4 h-4 text-forest-800 rounded"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      value={gstRate}
+                      disabled={!gstEnabled}
+                      onChange={(e) => setGstRate(Number(e.target.value))}
+                      className="w-20 px-2 py-1.5 rounded-lg border border-stone-200 bg-white text-xs font-semibold disabled:opacity-50"
+                    />
+                    <span className="text-xs text-stone-500">% (SAC 998555)</span>
+                  </div>
+                  <div className="text-[10px] text-stone-500 mt-1">
+                    {gstEnabled ? `GST Tax: ${formatINR(liveCosting.gstAmount)}` : 'GST Not Included in Price'}
+                  </div>
+                </div>
+
+                {/* Discount */}
+                <div>
+                  <label className="font-semibold text-stone-700 block mb-1">
+                    Agency Goodwill Discount (₹)
+                  </label>
+                  <input
+                    type="number"
+                    value={discountAmount}
+                    onChange={(e) => setDiscountAmount(Number(e.target.value))}
+                    className="w-full px-3 py-1.5 rounded-lg border border-stone-200 bg-white text-xs font-semibold"
+                  />
+                  <div className="text-[10px] text-stone-500 mt-1">
+                    Advance Deposit Req: {advancePercent}% ({formatINR(liveCosting.advanceAmountRequired)})
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* STEP 7: Inclusions, Exclusions & Terms */}
+          {currentStep === 7 && (
+            <div className="bg-white p-6 rounded-2xl border border-stone-200 shadow-card space-y-5 text-xs">
+              <div className="pb-3 border-b border-stone-100">
+                <h2 className="text-sm font-bold text-forest-900">Step 7: Inclusions, Exclusions & Payment Terms</h2>
+                <p className="text-[11px] text-stone-500">
+                  Refine the exact contractual inclusions and cancellation clauses displayed on the customer quotation.
+                </p>
+              </div>
+
+              {/* Inclusions */}
+              <div>
+                <label className="font-bold text-forest-900 block mb-2">Package Inclusions Checklist</label>
+                <div className="space-y-1.5">
+                  {inclusions.map((inc, i) => (
+                    <div key={i} className="flex items-center gap-2">
+                      <span className="text-emerald-600 font-bold">✓</span>
+                      <input
+                        type="text"
+                        value={inc}
+                        onChange={(e) => {
+                          const updated = [...inclusions];
+                          updated[i] = e.target.value;
+                          setInclusions(updated);
+                        }}
+                        className="flex-1 px-2.5 py-1 rounded border border-stone-200 text-xs"
+                      />
+                      <button
+                        onClick={() => setInclusions(inclusions.filter((_, idx) => idx !== i))}
+                        className="text-stone-400 hover:text-rose-600 p-1"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                  <button
+                    onClick={() => setInclusions([...inclusions, 'Special customized inclusion clause'])}
+                    className="text-[11px] font-semibold text-emerald-700 hover:underline mt-1"
+                  >
+                    + Add Inclusion Clause
+                  </button>
+                </div>
+              </div>
+
+              {/* Exclusions */}
+              <div className="pt-3 border-t border-stone-100">
+                <label className="font-bold text-forest-900 block mb-2">Package Exclusions</label>
+                <div className="space-y-1.5">
+                  {exclusions.map((exc, i) => (
+                    <div key={i} className="flex items-center gap-2">
+                      <span className="text-rose-600 font-bold">✕</span>
+                      <input
+                        type="text"
+                        value={exc}
+                        onChange={(e) => {
+                          const updated = [...exclusions];
+                          updated[i] = e.target.value;
+                          setExclusions(updated);
+                        }}
+                        className="flex-1 px-2.5 py-1 rounded border border-stone-200 text-xs"
+                      />
+                      <button
+                        onClick={() => setExclusions(exclusions.filter((_, idx) => idx !== i))}
+                        className="text-stone-400 hover:text-rose-600 p-1"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                  <button
+                    onClick={() => setExclusions([...exclusions, 'Personal adventure gear and union taxi fares'])}
+                    className="text-[11px] font-semibold text-emerald-700 hover:underline mt-1"
+                  >
+                    + Add Exclusion Clause
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* STEP 8: Customer Proposal Preview & Sharing */}
+          {currentStep === 8 && (
+            <div className="bg-white p-6 rounded-2xl border border-stone-200 shadow-card space-y-6 text-xs">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-stone-200">
+                <div>
+                  <h2 className="text-base font-bold text-forest-900">
+                    Step 8: Customer Proposal Preview & Disclosure Controls
+                  </h2>
+                  <p className="text-xs text-stone-500 mt-0.5">
+                    Review exactly what the guest will see on mobile and PDF before sending.
+                  </p>
+                </div>
+
+                {/* DUAL MODE DISCLOSURE SWITCHER */}
+                <div className="flex items-center p-1 rounded-xl bg-stone-100 border border-stone-200">
+                  <button
+                    onClick={() =>
+                      setCustomization({
+                        ...customization,
+                        disclosureMode: 'masked',
+                        showExactHotelNames: false,
+                        showDriverVehicleDetails: false,
+                      })
+                    }
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                      customization.disclosureMode === 'masked'
+                        ? 'bg-purple-700 text-white shadow-2xs'
+                        : 'text-stone-600 hover:text-stone-900'
+                    }`}
+                  >
+                    <Lock className="w-3.5 h-3.5" />
+                    <span>Pre-Advance (Masked)</span>
+                  </button>
+
+                  <button
+                    onClick={() =>
+                      setCustomization({
+                        ...customization,
+                        disclosureMode: 'disclosed',
+                        showExactHotelNames: true,
+                        showDriverVehicleDetails: true,
+                      })
+                    }
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                      customization.disclosureMode === 'disclosed'
+                        ? 'bg-teal-700 text-white shadow-2xs'
+                        : 'text-stone-600 hover:text-stone-900'
+                    }`}
+                  >
+                    <Unlock className="w-3.5 h-3.5" />
+                    <span>Confirmed (Disclosed)</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Mode Notice Banner */}
+              {isPreAdvanceMasked ? (
+                <div className="p-3.5 rounded-xl bg-purple-50 border border-purple-200 flex items-start gap-3">
+                  <ShieldAlert className="w-5 h-5 text-purple-700 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <div className="font-bold text-purple-900 text-xs">
+                      Pre-Advance Quotation Protection Active
+                    </div>
+                    <p className="text-[11px] text-purple-800 leading-relaxed mt-0.5">
+                      Exact hotel properties are automatically masked to category descriptions (e.g., &ldquo;Selected 4-Star Premium Resort, Mall Road Area or Similar&rdquo;).
+                      Driver contact details and license numbers are redacted. Wholesale supplier costs and profit margins remain strictly internal.
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-3.5 rounded-xl bg-teal-50 border border-teal-200 flex items-start gap-3">
+                  <CheckCircle2 className="w-5 h-5 text-teal-700 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <div className="font-bold text-teal-900 text-xs">
+                      Confirmed Post-Advance Voucher View Active
+                    </div>
+                    <p className="text-[11px] text-teal-800 leading-relaxed mt-0.5">
+                      Confirmed hotel property names and vehicle details are disclosed for the guest&apos;s departure manifest. Internal agency margins remain hidden.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Proposal Document Preview Container */}
+              <div className="p-6 rounded-2xl bg-stone-canvas border border-stone-300 space-y-6 shadow-inner">
+                {/* Header with Agency Branding */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-stone-300">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <Compass className="w-6 h-6 text-emerald-700" />
+                      <span className="text-base font-bold text-forest-900 tracking-tight">
+                        {companySettings.agencyName}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-stone-500 mt-0.5">{companySettings.tagline}</p>
+                  </div>
+                  <div className="text-left sm:text-right text-[11px] text-stone-600">
+                    <div className="font-bold text-forest-900">{companySettings.phone}</div>
+                    <div>{companySettings.email}</div>
+                    <div>{companySettings.website}</div>
+                  </div>
+                </div>
+
+                {/* Proposal Title Banner */}
+                <div className="bg-white p-5 rounded-xl border border-stone-200 shadow-2xs">
+                  <div className="flex justify-between items-start flex-wrap gap-2">
+                    <div>
+                      <span className="text-[10px] uppercase font-bold tracking-wider text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded">
+                        Bespoke Tour Proposal
+                      </span>
+                      <h3 className="text-base font-bold text-forest-900 mt-1">
+                        {sanitizedQuote.tripTitle}
+                      </h3>
+                      <p className="text-xs text-stone-600 mt-0.5">
+                        Route: {sanitizedQuote.destinationsSummary}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-xs text-stone-500">Proposal ID</div>
+                      <div className="font-mono font-bold text-forest-900 text-xs">
+                        {sanitizedQuote.quoteNumber}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4 pt-4 border-t border-stone-100 text-[11px]">
+                    <div>
+                      <span className="text-stone-400 block">Lead Guest:</span>
+                      <strong className="text-forest-900">{sanitizedQuote.guestName}</strong>
+                    </div>
+                    <div>
+                      <span className="text-stone-400 block">Travel Dates:</span>
+                      <strong className="text-forest-900">
+                        {formatIndianDate(sanitizedQuote.startDate)} ({sanitizedQuote.durationNights}N/{sanitizedQuote.durationDays}D)
+                      </strong>
+                    </div>
+                    <div>
+                      <span className="text-stone-400 block">Travellers:</span>
+                      <strong className="text-forest-900">
+                        {sanitizedQuote.adults} Adults {sanitizedQuote.children > 0 ? `+ ${sanitizedQuote.children} Chd` : ''}
+                      </strong>
+                    </div>
+                    <div>
+                      <span className="text-stone-400 block">Vehicle:</span>
+                      <strong className="text-forest-900">{sanitizedQuote.vehicleName}</strong>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Day-by-Day Proposal List */}
+                <div className="space-y-3">
+                  <h4 className="font-bold text-forest-900 text-xs uppercase tracking-wider">
+                    Day-Wise Curated Itinerary
+                  </h4>
+                  {sanitizedQuote.days.map((d) => (
+                    <div
+                      key={d.id}
+                      className="bg-white p-4 rounded-xl border border-stone-200 shadow-2xs space-y-2"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="w-5 h-5 rounded bg-forest-800 text-gold-400 text-[10px] font-bold flex items-center justify-center">
+                            D{d.dayNumber}
+                          </span>
+                          <span className="font-bold text-forest-900 text-xs">{d.title}</span>
+                        </div>
+                        <span className="text-[10px] text-stone-500 font-medium">{formatIndianDate(d.date)}</span>
+                      </div>
+
+                      <div className="text-[11px] text-stone-600">{d.routeTitle}</div>
+
+                      {/* Display Hotel Name (Masked or Disclosed) */}
+                      {d.customHotelName && d.dayType !== 'Departure' && (
+                        <div className="p-2 rounded bg-stone-50 text-[11px] flex items-center gap-2 font-medium text-forest-900">
+                          <HotelIcon className="w-3.5 h-3.5 text-forest-600 flex-shrink-0" />
+                          <span>
+                            Stay: <strong>{d.customHotelName}</strong> ({d.mealPlan})
+                          </span>
+                        </div>
+                      )}
+
+                      {/* Activities */}
+                      {d.activities.length > 0 && (
+                        <div className="space-y-1 pt-1">
+                          {d.activities.map((a) => (
+                            <div key={a.id} className="text-[11px] text-stone-600 pl-3 border-l-2 border-emerald-500">
+                              <span className="font-semibold text-stone-800">{a.timeSlot ? `${a.timeSlot} — ` : ''}{a.title}: </span>
+                              <span>{a.description}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                {/* Customer Price & Payment Box */}
+                <div className="bg-white p-5 rounded-xl border border-stone-200 shadow-2xs flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                  <div>
+                    <span className="text-[11px] text-stone-500 block">Package Total Price</span>
+                    <div className="text-xl font-bold text-forest-900 tabular-nums">
+                      {formatINR(sanitizedQuote.costing.finalSellingPrice)}
+                    </div>
+                    <div className="text-[11px] text-emerald-800 font-medium">
+                      {sanitizedQuote.costing.gstEnabled ? '✓ Inclusive of 5% Tour Operator GST' : 'Excluding GST'} • {formatINR(sanitizedQuote.costing.pricePerAdult)} per adult
+                    </div>
+                  </div>
+
+                  <div className="text-left sm:text-right">
+                    <span className="text-[11px] text-stone-500 block">Advance Deposit Required (30%)</span>
+                    <div className="text-base font-bold text-gold-600 tabular-nums">
+                      {formatINR(sanitizedQuote.costing.advanceAmountRequired)}
+                    </div>
+                    <div className="text-[10px] text-stone-400">
+                      Balance Due on Arrival: {formatINR(sanitizedQuote.costing.balanceDueAmount)}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Bank / UPI Details */}
+                <div className="bg-white p-4 rounded-xl border border-stone-200 text-[11px] text-stone-700 space-y-1">
+                  <div className="font-bold text-forest-900">Official Payment & Booking Deposit Instructions</div>
+                  <div>Bank: <strong>{companySettings.bankName}</strong> ({companySettings.branchName})</div>
+                  <div>Account: <strong>{companySettings.accountNumber}</strong> • IFSC: <strong>{companySettings.ifscCode}</strong></div>
+                  <div>UPI VPA: <strong className="text-emerald-700">{companySettings.upiVpa}</strong></div>
+                </div>
+              </div>
+
+              {/* Action Sharing Buttons */}
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-stone-200 flex-wrap">
+                <a
+                  href={`https://wa.me/${guestPhone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(
+                    generateWhatsAppMessage(sanitizedQuote, `${typeof window !== 'undefined' ? window.location.origin : ''}/itineraries/${sanitizedQuote.id}/preview`, companySettings.agencyName)
+                  )}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={() =>
+                    recordShareEvent({
+                      quoteId: sanitizedQuote.id,
+                      quoteNumber: sanitizedQuote.quoteNumber,
+                      channel: 'WhatsApp',
+                      recipient: guestPhone,
+                      disclosureMode: customization.disclosureMode,
+                      version: sanitizedQuote.version,
+                    })
+                  }
+                  className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs flex items-center gap-1.5 shadow-xs transition-colors"
+                >
+                  <Share2 className="w-3.5 h-3.5" />
+                  <span>Send via WhatsApp</span>
+                </a>
+
+                <button
+                  onClick={() => {
+                    recordShareEvent({
+                      quoteId: sanitizedQuote.id,
+                      quoteNumber: sanitizedQuote.quoteNumber,
+                      channel: 'PDF Download',
+                      recipient: guestName,
+                      disclosureMode: customization.disclosureMode,
+                      version: sanitizedQuote.version,
+                    });
+                    window.print();
+                  }}
+                  className="px-4 py-2 rounded-xl bg-forest-800 hover:bg-forest-700 text-white font-semibold text-xs flex items-center gap-1.5 shadow-xs transition-colors"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Download Proposal PDF</span>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Bottom Navigation Buttons (Next / Prev) */}
+          <div className="flex items-center justify-between bg-white p-4 rounded-xl border border-stone-200">
+            <button
+              onClick={() => setCurrentStep(Math.max(1, currentStep - 1))}
+              disabled={currentStep === 1}
+              className="px-4 py-2 rounded-lg border border-stone-200 text-stone-700 hover:bg-stone-50 text-xs font-semibold flex items-center gap-1 disabled:opacity-40"
+            >
+              <ChevronLeft className="w-4 h-4" />
+              <span>Previous Step</span>
+            </button>
+
+            <span className="text-xs text-stone-400 font-medium">
+              Step {currentStep} of 8
+            </span>
+
+            <button
+              onClick={() => setCurrentStep(Math.min(8, currentStep + 1))}
+              disabled={currentStep === 8}
+              className="px-4 py-2 rounded-lg bg-forest-800 hover:bg-forest-700 text-white text-xs font-semibold flex items-center gap-1 disabled:opacity-40"
+            >
+              <span>Next Step</span>
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        {/* Persistent Live Costing & Summary Drawer (Right Column) */}
+        <div className="space-y-4">
+          <div className="bg-white p-5 rounded-2xl border border-stone-200 shadow-card space-y-4 text-xs sticky top-20">
+            <div className="flex items-center justify-between pb-3 border-b border-stone-100">
+              <span className="font-bold text-forest-900 text-xs">Live Costing Summary</span>
+              <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-full">
+                Active
+              </span>
+            </div>
+
+            {/* Price Cards */}
+            <div className="p-3.5 rounded-xl bg-forest-900 text-white space-y-2">
+              <span className="text-[10px] text-stone-300 block">Package Selling Total</span>
+              <div className="text-2xl font-bold text-gold-400 tabular-nums">
+                {formatINR(liveCosting.finalSellingPrice)}
+              </div>
+              <div className="text-[11px] text-stone-200 flex justify-between pt-1 border-t border-forest-800">
+                <span>Per Adult ({adults} Pax):</span>
+                <strong className="text-white">{formatINR(liveCosting.pricePerAdult)}</strong>
+              </div>
+            </div>
+
+            {/* Internal Wholesale breakdown (Visible to staff) */}
+            <div className="space-y-2 pt-1 border-t border-stone-100 text-[11px]">
+              <div className="flex justify-between text-stone-600">
+                <span>Wholesale Supplier Cost:</span>
+                <span className="font-mono text-forest-900 font-medium">
+                  {formatINR(liveCosting.totalSupplierCost)}
+                </span>
+              </div>
+              <div className="flex justify-between text-emerald-700 font-medium">
+                <span>Agency Margin ({markupValue}%):</span>
+                <span>+{formatINR(liveCosting.grossProfitAmount)}</span>
+              </div>
+              <div className="flex justify-between text-stone-600">
+                <span>GST (5% SAC 998555):</span>
+                <span>{liveCosting.gstEnabled ? `+${formatINR(liveCosting.gstAmount)}` : 'Excl.'}</span>
+              </div>
+              {discountAmount > 0 && (
+                <div className="flex justify-between text-rose-600">
+                  <span>Discount:</span>
+                  <span>-{formatINR(discountAmount)}</span>
+                </div>
+              )}
+            </div>
+
+            {/* Advance Deposit */}
+            <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-[11px] space-y-1">
+              <div className="flex justify-between text-amber-900 font-bold">
+                <span>Advance Required ({advancePercent}%):</span>
+                <span>{formatINR(liveCosting.advanceAmountRequired)}</span>
+              </div>
+              <div className="flex justify-between text-amber-800">
+                <span>Balance on Arrival:</span>
+                <span>{formatINR(liveCosting.balanceDueAmount)}</span>
+              </div>
+            </div>
+
+            {/* Disclosure state indicator */}
+            <div className="pt-2 border-t border-stone-100">
+              <div className="flex items-center gap-1.5 text-[11px] text-stone-500">
+                {isPreAdvanceMasked ? (
+                  <>
+                    <Lock className="w-3.5 h-3.5 text-purple-600" />
+                    <span>Mode: Pre-Advance (Hotels Masked)</span>
+                  </>
+                ) : (
+                  <>
+                    <Unlock className="w-3.5 h-3.5 text-teal-600" />
+                    <span>Mode: Confirmed (Disclosed)</span>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function ItineraryBuilderPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-center text-xs text-stone-500">Loading Studio Workspace...</div>}>
+      <ItineraryBuilderContent />
+    </Suspense>
+  );
+}
