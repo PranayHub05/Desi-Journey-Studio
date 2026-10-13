@@ -16,6 +16,7 @@ import {
   UserProfile,
   UserRole,
   Vehicle,
+  Attraction,
 } from '../types';
 import {
   initialCompanySettings,
@@ -28,11 +29,14 @@ import {
   sampleSuppliers,
   sampleTripTemplates,
   sampleVehicles,
+  systemAuthUsers,
 } from '../lib/mockData';
 
 interface AppContextType {
-  currentUser: UserProfile;
+  currentUser: UserProfile | null;
   setCurrentUserRole: (role: UserRole) => void;
+  login: (usernameOrEmail: string, password?: string) => boolean;
+  logout: () => void;
   companySettings: CompanySettings;
   updateCompanySettings: (settings: Partial<CompanySettings>) => void;
   
@@ -48,6 +52,7 @@ interface AppContextType {
   addHotel: (hotel: Omit<Hotel, 'id' | 'updatedAt'>) => Hotel;
   updateHotel: (id: string, updates: Partial<Hotel>) => void;
   deleteHotel: (id: string) => void;
+  importHotelsCSV: (importedHotels: Hotel[]) => void;
 
   // Vehicles
   vehicles: Vehicle[];
@@ -58,6 +63,11 @@ interface AppContextType {
   // Destinations & Templates
   destinations: Destination[];
   addDestination: (dest: Destination) => void;
+  updateDestination: (id: string, updates: Partial<Destination>) => void;
+  deleteDestination: (id: string) => void;
+  addAttraction: (destinationId: string, attraction: Attraction) => void;
+  updateAttraction: (destinationId: string, attractionId: string, updates: Partial<Attraction>) => void;
+  deleteAttraction: (destinationId: string, attractionId: string) => void;
   tripTemplates: TripTemplate[];
 
   // Quotations
@@ -101,14 +111,17 @@ const STORAGE_KEYS = {
   SUPPLIER_PAYMENTS: 'dj_supplier_payments_v1',
   CUSTOMER_PAYMENTS: 'dj_customer_payments_v1',
   USER_ROLE: 'dj_user_role_v1',
+  LOGGED_IN_USER: 'dj_logged_in_user_v2',
 };
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [currentUser, setCurrentUser] = useState<UserProfile>({
-    id: 'user-rohit',
-    name: 'Rohit Sharma',
-    email: 'rohit@desijourney.in',
-    role: 'admin', // Full administrative access by default for complete feature exploration
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>({
+    id: systemAuthUsers[0].id,
+    name: systemAuthUsers[0].name,
+    email: systemAuthUsers[0].email,
+    role: systemAuthUsers[0].role,
+    phone: systemAuthUsers[0].phone,
+    title: systemAuthUsers[0].title,
   });
 
   const [companySettings, setCompanySettings] = useState<CompanySettings>(initialCompanySettings);
@@ -128,6 +141,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Load from LocalStorage on mount
   useEffect(() => {
     try {
+      const savedUser = localStorage.getItem(STORAGE_KEYS.LOGGED_IN_USER);
+      if (savedUser) {
+        setCurrentUser(JSON.parse(savedUser));
+      }
+
       const savedSettings = localStorage.getItem(STORAGE_KEYS.SETTINGS);
       if (savedSettings) setCompanySettings(JSON.parse(savedSettings));
 
@@ -160,7 +178,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       const savedRole = localStorage.getItem(STORAGE_KEYS.USER_ROLE) as UserRole | null;
       if (savedRole) {
-        setCurrentUser((u) => ({ ...u, role: savedRole }));
+        setCurrentUser((u) => u ? { ...u, role: savedRole } : null);
       }
     } catch (e) {
       console.warn('Failed to hydrate from localStorage, fallback to initial state', e);
@@ -201,9 +219,42 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   ]);
 
   const setCurrentUserRole = (role: UserRole) => {
-    setCurrentUser((prev) => ({ ...prev, role }));
+    setCurrentUser((prev) => (prev ? { ...prev, role } : null));
     try {
       localStorage.setItem(STORAGE_KEYS.USER_ROLE, role);
+    } catch {}
+  };
+
+  const login = (usernameOrEmail: string, password?: string): boolean => {
+    const clean = usernameOrEmail.trim().toLowerCase();
+    const matched = systemAuthUsers.find(
+      (u) =>
+        u.username.toLowerCase() === clean ||
+        u.email.toLowerCase() === clean
+    );
+    if (matched) {
+      const profile: UserProfile = {
+        id: matched.id,
+        name: matched.name,
+        email: matched.email,
+        role: matched.role,
+        phone: matched.phone,
+        title: matched.title,
+      };
+      setCurrentUser(profile);
+      try {
+        localStorage.setItem(STORAGE_KEYS.LOGGED_IN_USER, JSON.stringify(profile));
+        localStorage.setItem(STORAGE_KEYS.USER_ROLE, profile.role);
+      } catch {}
+      return true;
+    }
+    return false;
+  };
+
+  const logout = () => {
+    setCurrentUser(null);
+    try {
+      localStorage.removeItem(STORAGE_KEYS.LOGGED_IN_USER);
     } catch {}
   };
 
@@ -266,6 +317,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setHotels((prev) => prev.filter((h) => h.id !== id));
   };
 
+  const importHotelsCSV = (importedHotels: Hotel[]) => {
+    setHotels((prev) => {
+      const existingNames = new Set(prev.map((h) => h.name.toLowerCase()));
+      const filtered = importedHotels.filter((h) => !existingNames.has(h.name.toLowerCase()));
+      return [...filtered, ...prev];
+    });
+  };
+
   const addVehicle = (vehicleData: Omit<Vehicle, 'id'>) => {
     const newVehicle: Vehicle = {
       ...vehicleData,
@@ -285,6 +344,50 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const addDestination = (dest: Destination) => {
     setDestinations((prev) => [dest, ...prev]);
+  };
+
+  const updateDestination = (id: string, updates: Partial<Destination>) => {
+    setDestinations((prev) => prev.map((d) => (d.id === id ? { ...d, ...updates } : d)));
+  };
+
+  const deleteDestination = (id: string) => {
+    setDestinations((prev) => prev.filter((d) => d.id !== id));
+  };
+
+  const addAttraction = (destinationId: string, attraction: Attraction) => {
+    setDestinations((prev) =>
+      prev.map((d) => {
+        if (d.id !== destinationId) return d;
+        return {
+          ...d,
+          attractions: [attraction, ...d.attractions],
+        };
+      })
+    );
+  };
+
+  const updateAttraction = (destinationId: string, attractionId: string, updates: Partial<Attraction>) => {
+    setDestinations((prev) =>
+      prev.map((d) => {
+        if (d.id !== destinationId) return d;
+        return {
+          ...d,
+          attractions: d.attractions.map((a) => (a.id === attractionId ? { ...a, ...updates } : a)),
+        };
+      })
+    );
+  };
+
+  const deleteAttraction = (destinationId: string, attractionId: string) => {
+    setDestinations((prev) =>
+      prev.map((d) => {
+        if (d.id !== destinationId) return d;
+        return {
+          ...d,
+          attractions: d.attractions.filter((a) => a.id !== attractionId),
+        };
+      })
+    );
   };
 
   const getQuotationById = (id: string) => {
@@ -400,6 +503,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       value={{
         currentUser,
         setCurrentUserRole,
+        login,
+        logout,
         companySettings,
         updateCompanySettings,
         leads,
@@ -411,12 +516,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addHotel,
         updateHotel,
         deleteHotel,
+        importHotelsCSV,
         vehicles,
         addVehicle,
         updateVehicle,
         deleteVehicle,
         destinations,
         addDestination,
+        updateDestination,
+        deleteDestination,
+        addAttraction,
+        updateAttraction,
+        deleteAttraction,
         tripTemplates,
         quotations,
         getQuotationById,

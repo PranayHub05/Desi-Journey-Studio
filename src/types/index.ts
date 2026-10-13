@@ -6,7 +6,20 @@ export interface UserProfile {
   email: string;
   role: UserRole;
   phone?: string;
+  title?: string;
 }
+
+export interface AuthUser {
+  id: string;
+  username: string; // e.g. "admin", "planner", "sales", "ops"
+  name: string;
+  email: string;
+  role: UserRole;
+  title: string;
+  phone: string;
+  defaultPassword?: string;
+}
+
 
 export type LeadStatus =
   | 'New'
@@ -87,7 +100,7 @@ export interface Hotel {
   id: string;
   name: string;
   destination: string;
-  starCategory: '2-Star' | '3-Star' | '4-Star' | '5-Star' | 'Boutique / Heritage';
+  starCategory: '2-Star' | '3-Star' | '4-Star' | '5-Star' | 'Boutique / Heritage' | string;
   address: string;
   contactPerson?: string;
   phone?: string;
@@ -373,4 +386,6 @@ export interface CompanySettings {
   defaultInclusions: string[];
   defaultExclusions: string[];
   defaultTerms: string[];
+  geminiApiKey?: string;
+  geminiModel?: string;
 }

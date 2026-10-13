@@ -22,7 +22,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { Lead, LeadStatus, LeadSource, TripStyle } from '../../types';
-import { formatIndianDate, calculateTripDuration } from '../../lib/calculations';
+import { formatIndianDate, calculateTripDuration, addDaysToDate } from '../../lib/calculations';
 
 export default function LeadsPage() {
   const { leads, addLead, updateLeadStatus, deleteLead } = useApp();
@@ -41,7 +41,8 @@ export default function LeadsPage() {
     source: 'Website Form' as LeadSource,
     destination: 'Shimla & Manali',
     startDate: '2026-11-01',
-    endDate: '2026-11-07',
+    nights: 5,
+    endDate: '2026-11-06',
     adults: 2,
     children: 0,
     infants: 0,
@@ -85,7 +86,9 @@ export default function LeadsPage() {
 
   const handleCreateLead = (e: React.FormEvent) => {
     e.preventDefault();
-    const duration = calculateTripDuration(newLeadForm.startDate, newLeadForm.endDate);
+    const nights = Number(newLeadForm.nights) || 5;
+    const durationDays = nights + 1;
+    const calculatedEndDate = newLeadForm.endDate || addDaysToDate(newLeadForm.startDate, nights);
 
     addLead({
       guestName: newLeadForm.guestName,
@@ -97,9 +100,9 @@ export default function LeadsPage() {
       status: 'New',
       destination: newLeadForm.destination,
       startDate: newLeadForm.startDate,
-      endDate: newLeadForm.endDate,
-      durationNights: duration.nights,
-      durationDays: duration.days,
+      endDate: calculatedEndDate,
+      durationNights: nights,
+      durationDays: durationDays,
       adults: Number(newLeadForm.adults),
       children: Number(newLeadForm.children),
       infants: Number(newLeadForm.infants),
@@ -446,36 +449,76 @@ export default function LeadsPage() {
                 </div>
               </div>
 
-              {/* Dates & Duration */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 bg-stone-50 p-3.5 rounded-xl border border-stone-200">
-                <div>
-                  <label className="font-semibold text-stone-700 block mb-1">
-                    Travel Start Date *
-                  </label>
-                  <input
-                    type="date"
-                    required
-                    value={newLeadForm.startDate}
-                    onChange={(e) =>
-                      setNewLeadForm({ ...newLeadForm, startDate: e.target.value })
-                    }
-                    className="w-full px-3 py-1.5 rounded-lg border border-stone-200 outline-hidden focus:border-forest-600 bg-white"
-                  />
+              {/* Dates & Duration with Auto-calculated End Date */}
+              <div className="bg-stone-50 p-3.5 rounded-xl border border-stone-200 space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+                  <div>
+                    <label className="font-semibold text-stone-700 block mb-1">
+                      Travel Start Date *
+                    </label>
+                    <input
+                      type="date"
+                      required
+                      value={newLeadForm.startDate}
+                      onChange={(e) => {
+                        const newStart = e.target.value;
+                        const newEnd = addDaysToDate(newStart, newLeadForm.nights);
+                        setNewLeadForm({ ...newLeadForm, startDate: newStart, endDate: newEnd });
+                      }}
+                      className="w-full px-3 py-1.5 rounded-lg border border-stone-200 outline-hidden focus:border-forest-600 bg-white"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="font-semibold text-stone-700 block mb-1">
+                      Number of Nights *
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="45"
+                      required
+                      value={newLeadForm.nights}
+                      onChange={(e) => {
+                        const n = Math.max(1, Number(e.target.value));
+                        const newEnd = addDaysToDate(newLeadForm.startDate, n);
+                        setNewLeadForm({ ...newLeadForm, nights: n, endDate: newEnd });
+                      }}
+                      className="w-full px-3 py-1.5 rounded-lg border border-stone-200 outline-hidden focus:border-forest-600 bg-white font-bold text-forest-900"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="font-semibold text-stone-700 block mb-1 flex items-center justify-between">
+                      <span>End Date (Calculated)</span>
+                      <span className="text-[10px] text-emerald-700 font-bold">Auto</span>
+                    </label>
+                    <div className="w-full px-3 py-1.5 rounded-lg border border-stone-200 bg-stone-100/90 text-xs font-semibold text-forest-900 flex items-center justify-between">
+                      <span>{formatIndianDate(newLeadForm.endDate)}</span>
+                      <span className="text-[10px] text-stone-500 font-normal">({newLeadForm.nights + 1} Days)</span>
+                    </div>
+                  </div>
                 </div>
 
-                <div>
-                  <label className="font-semibold text-stone-700 block mb-1">
-                    Travel End Date *
-                  </label>
-                  <input
-                    type="date"
-                    required
-                    value={newLeadForm.endDate}
-                    onChange={(e) =>
-                      setNewLeadForm({ ...newLeadForm, endDate: e.target.value })
-                    }
-                    className="w-full px-3 py-1.5 rounded-lg border border-stone-200 outline-hidden focus:border-forest-600 bg-white"
-                  />
+                <div className="flex flex-wrap items-center gap-1">
+                  <span className="text-[10px] font-semibold text-stone-400 mr-1">Quick Select:</span>
+                  {[3, 4, 5, 6, 7, 8, 10].map((n) => (
+                    <button
+                      key={n}
+                      type="button"
+                      onClick={() => {
+                        const newEnd = addDaysToDate(newLeadForm.startDate, n);
+                        setNewLeadForm({ ...newLeadForm, nights: n, endDate: newEnd });
+                      }}
+                      className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all ${
+                        newLeadForm.nights === n
+                          ? 'bg-forest-800 text-gold-400 shadow-2xs'
+                          : 'bg-white border border-stone-200 text-stone-600 hover:bg-stone-100'
+                      }`}
+                    >
+                      {n}N / {n + 1}D
+                    </button>
+                  ))}
                 </div>
               </div>
 

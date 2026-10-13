@@ -161,7 +161,7 @@ export const TopNavbar: React.FC = () => {
               title="Switch user perspective for permissions test"
             >
               <UserCheck className="w-3.5 h-3.5 text-forest-600" />
-              <span className="capitalize font-medium">{currentUser.role}</span>
+              <span className="capitalize font-medium">{currentUser ? (currentUser.role === 'admin' ? 'Admin: Full Access' : currentUser.role) : 'Login'}</span>
               <ChevronDown className="w-3 h-3 text-stone-400" />
             </button>
 
@@ -172,8 +172,15 @@ export const TopNavbar: React.FC = () => {
                   onClick={() => setShowRoleDropdown(false)}
                 />
                 <div className="absolute right-0 mt-1.5 w-64 bg-white rounded-xl shadow-elevated border border-stone-200 p-2 z-30 text-xs animate-in fade-in slide-in-from-top-1">
-                  <div className="px-2 py-1 text-[11px] font-semibold text-stone-400 uppercase tracking-wider">
-                    Simulate Team Role
+                  <div className="px-2 py-1 text-[11px] font-semibold text-stone-400 uppercase tracking-wider flex justify-between items-center">
+                    <span>Simulate Team Role</span>
+                    <Link
+                      href="/login"
+                      onClick={() => setShowRoleDropdown(false)}
+                      className="text-emerald-700 font-bold hover:underline"
+                    >
+                      Login Portal →
+                    </Link>
                   </div>
                   {roles.map((r) => (
                     <button
@@ -183,7 +190,7 @@ export const TopNavbar: React.FC = () => {
                         setShowRoleDropdown(false);
                       }}
                       className={`w-full text-left p-2 rounded-lg flex items-start justify-between transition-colors ${
-                        currentUser.role === r.role
+                        currentUser?.role === r.role
                           ? 'bg-forest-50 text-forest-900 font-medium'
                           : 'hover:bg-stone-50 text-stone-700'
                       }`}
@@ -192,11 +199,20 @@ export const TopNavbar: React.FC = () => {
                         <div className="font-semibold text-xs">{r.label}</div>
                         <div className="text-[10px] text-stone-500">{r.desc}</div>
                       </div>
-                      {currentUser.role === r.role && (
+                      {currentUser?.role === r.role && (
                         <Check className="w-4 h-4 text-emerald-600 mt-0.5 flex-shrink-0" />
                       )}
                     </button>
                   ))}
+                  <div className="pt-2 mt-1 border-t border-stone-100 px-1">
+                    <Link
+                      href="/login"
+                      onClick={() => setShowRoleDropdown(false)}
+                      className="w-full block text-center py-1.5 rounded-lg bg-stone-100 hover:bg-stone-200 text-stone-700 font-semibold text-[11px]"
+                    >
+                      🚪 Switch User / Login Screen
+                    </Link>
+                  </div>
                 </div>
               </>
             )}

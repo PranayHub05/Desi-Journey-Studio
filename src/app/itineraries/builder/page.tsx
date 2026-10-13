@@ -29,6 +29,11 @@ import {
   Share2,
   Download,
   AlertTriangle,
+  Loader2,
+  Bot,
+  Wand2,
+  RefreshCw,
+  X,
 } from 'lucide-react';
 import { useApp } from '../../../context/AppContext';
 import {
@@ -80,12 +85,35 @@ function ItineraryBuilderContent() {
   const [guestEmail, setGuestEmail] = useState('kapoor@example.com');
   const [tripTitle, setTripTitle] = useState('Romantic Himachal: Shimla & Manali Circuit');
   const [startDate, setStartDate] = useState('2026-11-01');
-  const [endDate, setEndDate] = useState('2026-11-07');
+  const [nights, setNights] = useState<number>(5);
   const [adults, setAdults] = useState<number>(2);
   const [children, setChildren] = useState<number>(0);
   const [infants, setInfants] = useState<number>(0);
   const [roomsCount, setRoomsCount] = useState<number>(1);
   const [leadId, setLeadId] = useState<string | undefined>(undefined);
+
+  // Auto-calculated End Date strictly derived from Start Date + Nights
+  const endDate = useMemo(() => {
+    return addDaysToDate(startDate, nights);
+  }, [startDate, nights]);
+
+  // Duration derivation: N nights = N+1 days
+  const duration = useMemo(() => {
+    return {
+      nights,
+      days: nights === 0 ? 1 : nights + 1,
+      isValid: nights >= 1 && Boolean(startDate),
+      error: !startDate ? 'Start date is required' : nights < 1 ? 'Nights must be at least 1' : undefined,
+    };
+  }, [startDate, nights]);
+
+  // AI Assist / Gemini State
+  const [isAiModalOpen, setIsAiModalOpen] = useState(false);
+  const [aiTripStyle, setAiTripStyle] = useState('Family Holiday');
+  const [isGeneratingAi, setIsGeneratingAi] = useState(false);
+  const [aiGeneratedData, setAiGeneratedData] = useState<any>(null);
+  const [aiSourceBadge, setAiSourceBadge] = useState<string | null>(null);
+  const [aiNoticeMessage, setAiNoticeMessage] = useState<string | null>(null);
 
   // Route & Stops
   const [routeStops, setRouteStops] = useState<string[]>([
@@ -136,10 +164,174 @@ function ItineraryBuilderContent() {
 
   const [savedSuccessMsg, setSavedSuccessMsg] = useState<string | null>(null);
 
-  // Duration derivation
-  const duration = useMemo(() => {
-    return calculateTripDuration(startDate, endDate);
-  }, [startDate, endDate]);
+  // Start Date change handler: updates all existing day dates sequentially
+  const handleStartDateChange = (newDate: string) => {
+    setStartDate(newDate);
+    setDays((prev) =>
+      prev.map((d, i) => ({
+        ...d,
+        date: addDaysToDate(newDate, i),
+      }))
+    );
+  };
+
+  // Nights change handler: adjusts days array dynamically
+  const handleNightsChange = (newNights: number) => {
+    const validNights = Math.max(1, Math.min(45, newNights));
+    setNights(validNights);
+    const targetDays = validNights + 1;
+
+    setDays((prev) => {
+      if (prev.length === 0) return prev;
+      if (targetDays > prev.length) {
+        const added: ItineraryDay[] = [];
+        for (let i = prev.length + 1; i <= targetDays; i++) {
+          const isLast = i === targetDays;
+          const dayDate = addDaysToDate(startDate, i - 1);
+          const destName = routeStops[Math.min(i - 1, routeStops.length - 1)] || 'Himalayan Leisure';
+          const matchingHotel = hotels.find((h) => h.destination.toLowerCase() === destName.toLowerCase());
+
+          added.push({
+            id: `day-${i}-${Date.now()}`,
+            dayNumber: i,
+            date: dayDate,
+            dayType: isLast ? 'Departure' : 'Local Sightseeing',
+            title: isLast ? `Departure from ${destName} with Fond Memories` : `${destName} Guided Exploration`,
+            routeTitle: isLast ? `${destName} to Airport / Railway Station` : `${destName} Local Circuit`,
+            distanceKm: isLast ? 120 : 35,
+            driveTimeHours: isLast ? 3.5 : 1.5,
+            isTravelEstimate: true,
+            hotelDestination: destName,
+            hotelId: matchingHotel?.id,
+            customHotelName: matchingHotel?.name || 'Curated 4-Star Resort',
+            roomCategory: matchingHotel?.rates[0]?.roomCategory || 'Deluxe Room',
+            mealPlan: 'MAP',
+            breakfastIncluded: true,
+            lunchIncluded: false,
+            dinnerIncluded: !isLast,
+            activities: [
+              {
+                id: `act-${i}-1`,
+                timeSlot: '10:00 AM',
+                title: isLast ? 'Chauffeur Departure Transfer' : `Sightseeing in ${destName}`,
+                description: isLast ? 'Assistance with check-out and airport transit.' : `Curated visit to viewpoints in ${destName}.`,
+                type: isLast ? 'Transit' : 'Sightseeing',
+                isEstimate: false,
+              },
+            ],
+          });
+        }
+        return [...prev, ...added];
+      } else if (targetDays < prev.length) {
+        const trimmed = prev.slice(0, targetDays);
+        const lastIdx = trimmed.length - 1;
+        if (lastIdx >= 0) {
+          trimmed[lastIdx] = {
+            ...trimmed[lastIdx],
+            dayType: 'Departure',
+            title: trimmed[lastIdx].title.includes('Departure')
+              ? trimmed[lastIdx].title
+              : `Departure with Cherished Memories`,
+            routeTitle: trimmed[lastIdx].routeTitle.includes('Airport')
+              ? trimmed[lastIdx].routeTitle
+              : `${trimmed[lastIdx].hotelDestination} to Airport / Station Transfer`,
+            dinnerIncluded: false,
+          };
+        }
+        return trimmed;
+      }
+      return prev;
+    });
+  };
+
+  // AI Assist Generation Handler
+  const handleGenerateAiItinerary = async () => {
+    setIsGeneratingAi(true);
+    setAiNoticeMessage(null);
+    try {
+      const res = await fetch('/api/ai/generate-itinerary', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          destination: routeStops.slice(1, -1).join(' & ') || routeStops[0] || 'Shimla & Manali',
+          nights,
+          routeStops,
+          tripStyle: aiTripStyle,
+          adults,
+          apiKey: companySettings.geminiApiKey,
+          model: companySettings.geminiModel,
+        }),
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setAiGeneratedData(data.data);
+        setAiSourceBadge(data.source);
+        if (data.notice) {
+          setAiNoticeMessage(data.notice);
+        }
+      } else {
+        setAiNoticeMessage(data.error || 'Failed to generate itinerary with AI.');
+      }
+    } catch (err: any) {
+      setAiNoticeMessage(err.message || 'Network error while contacting AI service.');
+    } finally {
+      setIsGeneratingAi(false);
+    }
+  };
+
+  const handleApplyAiSchedule = () => {
+    if (!aiGeneratedData || !aiGeneratedData.days) return;
+
+    if (aiGeneratedData.tripTitle) {
+      setTripTitle(aiGeneratedData.tripTitle);
+    }
+
+    const newDays: ItineraryDay[] = aiGeneratedData.days.map((aiDay: any, idx: number) => {
+      const isFirst = idx === 0;
+      const isLast = idx === aiGeneratedData.days.length - 1;
+      const dayDate = addDaysToDate(startDate, idx);
+      const stopName = routeStops[Math.min(idx, routeStops.length - 1)] || 'Himalayas';
+      const matchingHotel = hotels.find((h) =>
+        h.destination.toLowerCase().includes(stopName.toLowerCase()) ||
+        stopName.toLowerCase().includes(h.destination.toLowerCase())
+      );
+
+      return {
+        id: `day-ai-${idx + 1}-${Date.now()}`,
+        dayNumber: aiDay.dayNumber || idx + 1,
+        date: dayDate,
+        dayType: aiDay.dayType || (isFirst ? 'Arrival & Transfer' : isLast ? 'Departure' : 'Local Sightseeing'),
+        title: aiDay.title || `Day ${idx + 1} Tour`,
+        routeTitle: aiDay.routeTitle || `${stopName} Excursion`,
+        distanceKm: isFirst ? 115 : isLast ? 140 : 40,
+        driveTimeHours: isFirst ? 3.5 : isLast ? 4.0 : 1.5,
+        isTravelEstimate: true,
+        hotelDestination: stopName,
+        hotelId: matchingHotel?.id,
+        customHotelName: matchingHotel?.name || 'Curated 4-Star Mountain View Resort',
+        roomCategory: matchingHotel?.rates[0]?.roomCategory || 'Deluxe Room',
+        mealPlan: 'MAP',
+        breakfastIncluded: !isFirst,
+        lunchIncluded: false,
+        dinnerIncluded: !isLast,
+        activities: (aiDay.activities || []).map((act: any, actIdx: number) => ({
+          id: `act-ai-${idx + 1}-${actIdx + 1}`,
+          timeSlot: act.timeSlot || '10:00 AM',
+          title: act.title || 'Sightseeing Tour',
+          description: act.description || 'Guided visit to top spots.',
+          type: act.type || 'Sightseeing',
+          isEstimate: false,
+        })),
+      };
+    });
+
+    setDays(newDays);
+    setNights(newDays.length - 1);
+    setIsAiModalOpen(false);
+    setSavedSuccessMsg('✨ Day timeline auto-generated by AI successfully applied!');
+    setTimeout(() => setSavedSuccessMsg(null), 4000);
+  };
 
   // Load from existing quotation if editQuoteId is passed
   useEffect(() => {
@@ -151,7 +343,8 @@ function ItineraryBuilderContent() {
         setGuestEmail(q.guestEmail || '');
         setTripTitle(q.tripTitle);
         setStartDate(q.startDate);
-        setEndDate(q.endDate);
+        const calculatedNights = q.durationNights || (q.endDate ? calculateTripDuration(q.startDate, q.endDate).nights : 5);
+        setNights(calculatedNights);
         setAdults(q.adults);
         setChildren(q.children);
         setInfants(q.infants);
@@ -180,7 +373,8 @@ function ItineraryBuilderContent() {
         setGuestPhone(lead.phone);
         setGuestEmail(lead.email || '');
         setStartDate(lead.startDate);
-        setEndDate(lead.endDate);
+        const calculatedNights = lead.durationNights || (lead.endDate ? calculateTripDuration(lead.startDate, lead.endDate).nights : 5);
+        setNights(calculatedNights);
         setAdults(lead.adults);
         setChildren(lead.children);
         setInfants(lead.infants || 0);
@@ -606,25 +800,63 @@ function ItineraryBuilderContent() {
                   )}
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div>
-                    <label className="font-medium text-stone-700 block mb-1">Start Date</label>
+                    <label className="font-semibold text-stone-700 block mb-1">Start Date *</label>
                     <input
                       type="date"
                       value={startDate}
-                      onChange={(e) => setStartDate(e.target.value)}
-                      className="w-full px-3 py-1.5 rounded-lg border border-stone-200 bg-white text-xs outline-hidden focus:border-forest-600"
+                      onChange={(e) => handleStartDateChange(e.target.value)}
+                      className="w-full px-3 py-1.5 rounded-lg border border-stone-200 bg-white text-xs outline-hidden focus:border-forest-600 font-medium"
                     />
                   </div>
+
                   <div>
-                    <label className="font-medium text-stone-700 block mb-1">End Date</label>
+                    <label className="font-semibold text-stone-700 block mb-1">Number of Nights *</label>
                     <input
-                      type="date"
-                      value={endDate}
-                      onChange={(e) => setEndDate(e.target.value)}
-                      className="w-full px-3 py-1.5 rounded-lg border border-stone-200 bg-white text-xs outline-hidden focus:border-forest-600"
+                      type="number"
+                      min="1"
+                      max="45"
+                      value={nights}
+                      onChange={(e) => handleNightsChange(Number(e.target.value))}
+                      className="w-full px-3 py-1.5 rounded-lg border border-stone-200 bg-white text-xs outline-hidden focus:border-forest-600 font-bold text-forest-900"
                     />
                   </div>
+
+                  <div>
+                    <label className="font-semibold text-stone-700 block mb-1 flex items-center justify-between">
+                      <span>End Date (Calculated)</span>
+                      <span className="text-[10px] text-emerald-700 font-bold">Auto</span>
+                    </label>
+                    <div className="w-full px-3 py-1.5 rounded-lg border border-stone-200 bg-stone-100/90 text-xs font-semibold text-forest-900 flex items-center justify-between">
+                      <span>{formatIndianDate(endDate)}</span>
+                      <span className="text-[10px] text-stone-500 font-normal">({duration.days} Days)</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Quick Selection Chips for Nights */}
+                <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                  <span className="text-[10px] font-semibold text-stone-500 mr-1">Quick Select Duration:</span>
+                  {[2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 14].map((n) => (
+                    <button
+                      key={n}
+                      type="button"
+                      onClick={() => handleNightsChange(n)}
+                      className={`px-2 py-0.5 rounded text-[11px] font-bold transition-all ${
+                        nights === n
+                          ? 'bg-forest-800 text-gold-400 shadow-2xs'
+                          : 'bg-white border border-stone-200 text-stone-600 hover:bg-forest-50 hover:text-forest-800'
+                      }`}
+                    >
+                      {n}N / {n + 1}D
+                    </button>
+                  ))}
+                </div>
+
+                <div className="text-[10px] text-stone-500 flex items-center gap-1.5">
+                  <span className="text-forest-700 font-bold">ℹ️ Duration Logic:</span>
+                  <span>End date is automatically calculated from Start Date + Number of Nights. All timeline days and hotel nights adapt automatically.</span>
                 </div>
 
                 {!duration.isValid && (
@@ -689,14 +921,25 @@ function ItineraryBuilderContent() {
           {/* STEP 2: Route & Destinations */}
           {currentStep === 2 && (
             <div className="bg-white p-6 rounded-2xl border border-stone-200 shadow-card space-y-5 text-xs">
-              <div className="flex items-center justify-between pb-3 border-b border-stone-100">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-stone-100">
                 <div className="flex items-center gap-2">
                   <MapPin className="w-4 h-4 text-forest-600" />
                   <h2 className="text-sm font-bold text-forest-900">Step 2: Destination Sequencing & Route Stops</h2>
                 </div>
 
-                {/* Pre-configured Indian circuits */}
                 <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsAiModalOpen(true);
+                      setAiGeneratedData(null);
+                    }}
+                    className="px-3 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-900 font-bold text-[11px] flex items-center gap-1.5 transition-colors shadow-2xs"
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+                    <span>✨ AI Assist (Gemini Flash)</span>
+                  </button>
+
                   <span className="text-[11px] text-stone-400">Load Template:</span>
                   <select
                     onChange={(e) => {
@@ -810,14 +1053,25 @@ function ItineraryBuilderContent() {
                   </p>
                 </div>
 
-                <button
-                  onClick={() => {
-                    const newDayNumber = days.length + 1;
-                    const lastDay = days[days.length - 1];
-                    const nextDate = lastDay ? addDaysToDate(lastDay.date, 1) : startDate;
-                    setDays([
-                      ...days,
-                      {
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsAiModalOpen(true);
+                      setAiGeneratedData(null);
+                    }}
+                    className="px-3 py-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-900 font-bold text-xs flex items-center gap-1.5 shadow-2xs transition-colors"
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+                    <span>✨ AI Generate Schedule</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      const newDayNumber = days.length + 1;
+                      const lastDay = days[days.length - 1];
+                      const nextDate = lastDay ? addDaysToDate(lastDay.date, 1) : startDate;
+                      const newDay: ItineraryDay = {
                         id: `day-${Date.now()}`,
                         dayNumber: newDayNumber,
                         date: nextDate,
@@ -831,14 +1085,16 @@ function ItineraryBuilderContent() {
                         dinnerIncluded: true,
                         isTravelEstimate: true,
                         activities: [],
-                      },
-                    ]);
-                  }}
-                  className="px-3 py-1.5 rounded-lg bg-forest-800 hover:bg-forest-700 text-white font-medium text-xs flex items-center gap-1"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>Add Extra Day</span>
-                </button>
+                      };
+                      setDays([...days, newDay]);
+                      setNights(newDayNumber - 1);
+                    }}
+                    className="px-3 py-1.5 rounded-lg bg-forest-800 hover:bg-forest-700 text-white font-medium text-xs flex items-center gap-1"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Add Extra Day</span>
+                  </button>
+                </div>
               </div>
 
               {/* Day Cards List */}
@@ -886,7 +1142,11 @@ function ItineraryBuilderContent() {
                           <Copy className="w-3.5 h-3.5" />
                         </button>
                         <button
-                          onClick={() => setDays(days.filter((_, i) => i !== dayIndex))}
+                          onClick={() => {
+                            const updated = days.filter((_, i) => i !== dayIndex);
+                            setDays(updated);
+                            setNights(Math.max(1, updated.length - 1));
+                          }}
                           title="Remove day"
                           className="p-1.5 text-stone-400 hover:text-rose-600 hover:bg-rose-50 rounded"
                         >
@@ -1825,6 +2085,206 @@ function ItineraryBuilderContent() {
           </div>
         </div>
       </div>
+      {/* GEMINI FLASH AI SYNTHESIS MODAL */}
+      {isAiModalOpen && (
+        <div className="fixed inset-0 bg-forest-950/70 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] flex flex-col shadow-2xl border border-stone-200 text-xs overflow-hidden">
+            {/* Modal Header */}
+            <div className="p-5 bg-gradient-to-r from-forest-900 to-forest-800 text-white flex items-center justify-between border-b border-forest-700">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-amber-400 text-forest-950 flex items-center justify-center font-bold shadow-2xs">
+                  <Sparkles className="w-4 h-4 text-forest-950" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold tracking-tight text-white flex items-center gap-2">
+                    <span>Google Gemini Flash Neural Day Generator</span>
+                    <span className="text-[10px] bg-amber-400/20 text-gold-300 border border-gold-400/30 px-2 py-0.5 rounded-full font-mono">
+                      {companySettings.geminiModel || 'gemini-1.5-flash'}
+                    </span>
+                  </h3>
+                  <p className="text-[11px] text-stone-300 mt-0.5">
+                    Generate balanced Himalayan routes, realistic driving estimates & day-by-day sightseeing.
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsAiModalOpen(false)}
+                className="p-1.5 text-stone-400 hover:text-white rounded-lg hover:bg-forest-700 transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-5 overflow-y-auto space-y-4 flex-1">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-stone-50 p-3.5 rounded-xl border border-stone-200">
+                <div>
+                  <label className="text-[11px] font-semibold text-stone-500 uppercase tracking-wider block mb-1">
+                    Circuit & Destinations
+                  </label>
+                  <div className="font-bold text-forest-900 text-xs">
+                    {routeStops.join(' → ')}
+                  </div>
+                </div>
+                <div>
+                  <label className="text-[11px] font-semibold text-stone-500 uppercase tracking-wider block mb-1">
+                    Duration & Passengers
+                  </label>
+                  <div className="font-bold text-forest-900 text-xs">
+                    {nights} Nights ({duration.days} Days) • {adults} Adults
+                  </div>
+                </div>
+              </div>
+
+              {/* Trip Style Selection */}
+              <div>
+                <label className="font-semibold text-stone-700 block mb-1.5">
+                  Trip Style & Guest Pace Preference
+                </label>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {[
+                    'Family Holiday',
+                    'Honeymoon & Romantic',
+                    'Adventure & Trekking',
+                    'Heritage & Culture',
+                    'Leisure & Scenic',
+                    'Senior Citizen Comfort',
+                  ].map((style) => (
+                    <button
+                      key={style}
+                      type="button"
+                      onClick={() => setAiTripStyle(style)}
+                      className={`px-3 py-2 rounded-xl text-left border text-xs font-semibold transition-all ${
+                        aiTripStyle === style
+                          ? 'border-forest-800 bg-forest-50 text-forest-900 shadow-2xs ring-1 ring-forest-800'
+                          : 'border-stone-200 bg-white text-stone-600 hover:bg-stone-50'
+                      }`}
+                    >
+                      {style}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Generation Notice */}
+              {companySettings.geminiApiKey ? (
+                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-[11px] text-emerald-900 flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>Gemini Flash API key detected. Will perform live generative synthesis with custom timings.</span>
+                </div>
+              ) : (
+                <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-[11px] text-amber-900 flex items-start gap-2">
+                  <Sparkles className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                  <div>
+                    <span>Using built-in Desi Journey Regional Knowledge Base. (To activate live Google Gemini neural models, configure your API key in <Link href="/settings" className="underline font-bold text-forest-800">Settings</Link>).</span>
+                  </div>
+                </div>
+              )}
+
+              {aiNoticeMessage && (
+                <div className="p-3 bg-stone-100 border border-stone-200 rounded-xl text-[11px] text-stone-700">
+                  {aiNoticeMessage}
+                </div>
+              )}
+
+              {/* Generated Result Preview */}
+              {aiGeneratedData && (
+                <div className="space-y-3 pt-2 border-t border-stone-200">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded">
+                        Generated via {aiSourceBadge || 'Gemini Flash'}
+                      </span>
+                      <h4 className="text-xs font-bold text-forest-900 mt-1">
+                        {aiGeneratedData.tripTitle}
+                      </h4>
+                      <p className="text-[11px] text-stone-500">
+                        {aiGeneratedData.overview}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                    {aiGeneratedData.days?.map((day: any, dIdx: number) => (
+                      <div
+                        key={dIdx}
+                        className="p-2.5 rounded-lg border border-stone-200 bg-stone-50/70 text-xs"
+                      >
+                        <div className="flex items-center gap-2 font-bold text-forest-900">
+                          <span className="px-1.5 py-0.5 rounded bg-forest-800 text-gold-400 text-[10px]">
+                            Day {day.dayNumber || dIdx + 1}
+                          </span>
+                          <span>{day.title}</span>
+                          <span className="text-[10px] text-stone-400 font-normal">
+                            ({day.dayType})
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-stone-600 mt-0.5">
+                          Route: <em>{day.routeTitle}</em>
+                        </div>
+                        {day.activities && day.activities.length > 0 && (
+                          <div className="mt-1.5 space-y-1 pl-2 border-l-2 border-forest-300">
+                            {day.activities.map((act: any, aIdx: number) => (
+                              <div key={aIdx} className="text-[10px] text-stone-600">
+                                <strong className="text-forest-800">{act.timeSlot}:</strong> {act.title}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 bg-stone-50 border-t border-stone-200 flex items-center justify-between gap-3">
+              <button
+                type="button"
+                onClick={() => setIsAiModalOpen(false)}
+                className="px-4 py-2 rounded-xl border border-stone-200 text-stone-700 hover:bg-stone-100 font-semibold text-xs"
+              >
+                Close
+              </button>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  disabled={isGeneratingAi}
+                  onClick={handleGenerateAiItinerary}
+                  className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-stone-900 font-bold text-xs flex items-center gap-1.5 shadow-2xs transition-colors"
+                >
+                  {isGeneratingAi ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>Synthesizing Days...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-3.5 h-3.5" />
+                      <span>{aiGeneratedData ? 'Regenerate Schedule' : 'Generate with Gemini'}</span>
+                    </>
+                  )}
+                </button>
+
+                {aiGeneratedData && (
+                  <button
+                    type="button"
+                    onClick={handleApplyAiSchedule}
+                    className="px-4 py-2 rounded-xl bg-forest-800 hover:bg-forest-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-xs transition-colors"
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5 text-gold-400" />
+                    <span>Apply to Itinerary Builder</span>
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

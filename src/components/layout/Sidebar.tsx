@@ -167,28 +167,51 @@ export const Sidebar: React.FC = () => {
       </div>
 
       {/* User Card & Active Role */}
+      {/* User Card & Active Role */}
       <div className="p-3.5 border-t border-forest-800/60 bg-forest-900/60">
-        <div className="flex items-center justify-between p-2 rounded-lg bg-forest-800/40 border border-forest-700/30">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-8 h-8 rounded-full bg-forest-700 flex items-center justify-center text-xs font-bold text-gold-400 border border-gold-500/20">
-              {currentUser.name.charAt(0)}
-            </div>
-            <div className="min-w-0">
-              <p className="text-xs font-medium text-white truncate">{currentUser.name}</p>
-              <div className="flex items-center gap-1 text-[10px] text-stone-400 capitalize">
-                <ShieldCheck className="w-3 h-3 text-emerald-400" />
-                <span>{currentUser.role} Role</span>
+        {currentUser ? (
+          <div className="p-2 rounded-lg bg-forest-800/40 border border-forest-700/30 space-y-1.5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-8 h-8 rounded-full bg-forest-700 flex items-center justify-center text-xs font-bold text-gold-400 border border-gold-500/20">
+                  {currentUser.name.charAt(0)}
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs font-medium text-white truncate">{currentUser.name}</p>
+                  <div className="flex items-center gap-1 text-[10px] text-stone-400 capitalize">
+                    <ShieldCheck className="w-3 h-3 text-emerald-400" />
+                    <span>{currentUser.role === 'admin' ? 'Admin: Full Access' : `${currentUser.role} Role`}</span>
+                  </div>
+                </div>
               </div>
+              <Link
+                href="/settings"
+                title="Configure settings"
+                className="text-stone-400 hover:text-white p-1 rounded"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </Link>
+            </div>
+
+            <div className="pt-1.5 border-t border-forest-700/30 flex justify-between items-center text-[10px]">
+              <span className="text-stone-400">{currentUser.title || 'Staff'}</span>
+              <Link
+                href="/login"
+                className="text-gold-400 hover:text-gold-300 font-semibold"
+                title="Switch team member"
+              >
+                Switch Portal →
+              </Link>
             </div>
           </div>
+        ) : (
           <Link
-            href="/settings"
-            title="Configure settings"
-            className="text-stone-400 hover:text-white p-1 rounded"
+            href="/login"
+            className="w-full flex items-center justify-center gap-2 py-2 rounded-lg bg-forest-800 text-gold-400 text-xs font-bold"
           >
-            <ChevronRight className="w-4 h-4" />
+            Log In to Studio
           </Link>
-        </div>
+        )}
       </div>
     </aside>
   );

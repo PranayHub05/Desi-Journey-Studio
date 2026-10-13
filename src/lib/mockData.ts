@@ -9,7 +9,52 @@ import {
   SupplierPaymentEntry,
   TripTemplate,
   Vehicle,
+  AuthUser,
 } from '../types';
+
+export const systemAuthUsers: AuthUser[] = [
+  {
+    id: 'user-vikas',
+    username: 'admin',
+    name: 'Vikas Sharma',
+    email: 'vikas@desijourney.in',
+    role: 'admin',
+    title: 'Managing Partner & Director',
+    phone: '+91 98724 56789',
+    defaultPassword: 'admin123',
+  },
+  {
+    id: 'user-rohit',
+    username: 'planner',
+    name: 'Rohit Sharma',
+    email: 'rohit@desijourney.in',
+    role: 'sales',
+    title: 'Senior Itinerary Planner',
+    phone: '+91 98160 44550',
+    defaultPassword: 'planner123',
+  },
+  {
+    id: 'user-anita',
+    username: 'concierge',
+    name: 'Anita Sen',
+    email: 'anita@desijourney.in',
+    role: 'sales',
+    title: 'Guest Concierge & Inbound Executive',
+    phone: '+91 98220 88712',
+    defaultPassword: 'concierge123',
+  },
+  {
+    id: 'user-sunil',
+    username: 'accounts',
+    name: 'Sunil Kumar',
+    email: 'sunil@desijourney.in',
+    role: 'ops',
+    title: 'Operations & Accounts Coordinator',
+    phone: '+91 98150 77112',
+    defaultPassword: 'accounts123',
+  },
+];
+
 
 export const initialCompanySettings: CompanySettings = {
   agencyName: 'Desi Journey Studio',
@@ -32,6 +77,8 @@ export const initialCompanySettings: CompanySettings = {
   defaultGstPercent: 5,
   gstCalculationType: 'exclusive_added',
   defaultAdvancePercent: 30,
+  geminiApiKey: '',
+  geminiModel: 'gemini-1.5-flash',
   defaultInclusions: [
     'Assistance on arrival and departure at designated airport/railway station by executive.',
     'Accommodation for the specified number of nights in hand-picked curated properties.',

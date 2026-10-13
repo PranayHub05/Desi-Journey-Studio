@@ -13,6 +13,13 @@ import {
   Save,
   CheckCircle2,
   Compass,
+  Sparkles,
+  Key,
+  Eye,
+  EyeOff,
+  Loader2,
+  AlertTriangle,
+  Cpu,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 
@@ -28,6 +35,50 @@ export default function SettingsPage() {
   const [formData, setFormData] = useState(companySettings);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [showApiKey, setShowApiKey] = useState(false);
+  const [isTestingApi, setIsTestingApi] = useState(false);
+  const [apiTestResult, setApiTestResult] = useState<{ success: boolean; message: string } | null>(null);
+
+  const handleTestGeminiKey = async () => {
+    if (!formData.geminiApiKey || formData.geminiApiKey.trim().length < 5) {
+      setApiTestResult({ success: false, message: 'Please enter a valid Gemini API key first.' });
+      return;
+    }
+    setIsTestingApi(true);
+    setApiTestResult(null);
+    const startTime = Date.now();
+    try {
+      const res = await fetch('/api/ai/generate-itinerary', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          apiKey: formData.geminiApiKey.trim(),
+          model: formData.geminiModel || 'gemini-1.5-flash',
+          isTestPing: true,
+        }),
+      });
+      const data = await res.json();
+      const latency = Date.now() - startTime;
+      if (res.ok && data.success) {
+        setApiTestResult({
+          success: true,
+          message: `Connected successfully to ${formData.geminiModel || 'gemini-1.5-flash'} (${latency}ms)!`,
+        });
+      } else {
+        setApiTestResult({
+          success: false,
+          message: data.error || 'Connection failed. Please verify your Google Gemini API key.',
+        });
+      }
+    } catch (err: any) {
+      setApiTestResult({
+        success: false,
+        message: err.message || 'Network error while contacting Gemini endpoint.',
+      });
+    } finally {
+      setIsTestingApi(false);
+    }
+  };
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
@@ -279,6 +330,128 @@ export default function SettingsPage() {
                 onChange={(e) => setFormData({ ...formData, defaultAdvancePercent: Number(e.target.value) })}
                 className="w-full px-3 py-2 rounded-lg border border-stone-200 font-semibold text-forest-900"
               />
+            </div>
+          </div>
+        </div>
+
+        {/* Section 4: Google Gemini Flash AI Engine Configuration */}
+        <div className="bg-white p-6 rounded-2xl border border-stone-200 shadow-card space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-stone-100">
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-amber-500" />
+              <h2 className="text-sm font-bold text-forest-900">
+                4. Google Gemini Flash AI Engine Configuration
+              </h2>
+            </div>
+            <span className="text-[11px] font-semibold text-emerald-800 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200 w-fit">
+              ✨ Neural Itinerary Generator
+            </span>
+          </div>
+
+          <p className="text-stone-600 text-[11px] leading-relaxed">
+            Desi Journey Studio uses Google Gemini Flash models to automatically draft realistic day-by-day travel schedules, calculate realistic Himalayan driving hours, suggest regional sightseeing stops, and synthesize guest proposals.
+          </p>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="font-semibold text-stone-700 block mb-1">
+                Gemini API Key
+              </label>
+              <div className="relative">
+                <input
+                  type={showApiKey ? 'text' : 'password'}
+                  value={formData.geminiApiKey || ''}
+                  onChange={(e) =>
+                    setFormData({ ...formData, geminiApiKey: e.target.value })
+                  }
+                  placeholder="AIzaSy..."
+                  className="w-full pl-3 pr-10 py-2 rounded-lg border border-stone-200 font-mono text-xs focus:border-forest-600 outline-hidden"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowApiKey(!showApiKey)}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-700"
+                >
+                  {showApiKey ? (
+                    <EyeOff className="w-4 h-4" />
+                  ) : (
+                    <Eye className="w-4 h-4" />
+                  )}
+                </button>
+              </div>
+              <p className="text-[10px] text-stone-400 mt-1">
+                Get an API key from <a href="https://aistudio.google.com" target="_blank" rel="noreferrer" className="text-forest-700 underline font-medium">Google AI Studio</a>. Saved securely in local state.
+              </p>
+            </div>
+
+            <div>
+              <label className="font-semibold text-stone-700 block mb-1">
+                Preferred AI Model
+              </label>
+              <select
+                value={formData.geminiModel || 'gemini-1.5-flash'}
+                onChange={(e) =>
+                  setFormData({ ...formData, geminiModel: e.target.value })
+                }
+                className="w-full px-3 py-2 rounded-lg border border-stone-200 bg-white font-medium text-xs focus:border-forest-600 outline-hidden"
+              >
+                <option value="gemini-1.5-flash">Gemini 1.5 Flash (Recommended: Ultra-fast & High Limits)</option>
+                <option value="gemini-2.0-flash">Gemini 2.0 Flash (Next-Generation Low Latency)</option>
+                <option value="gemini-2.0-flash-exp">Gemini 2.0 Flash Experimental</option>
+                <option value="gemini-1.5-pro">Gemini 1.5 Pro (Deep Complex Reasoning)</option>
+              </select>
+              <p className="text-[10px] text-stone-400 mt-1">
+                Sub-second generation latency optimized for rapid travel quotation workflows.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2">
+            <button
+              type="button"
+              disabled={isTestingApi || !formData.geminiApiKey}
+              onClick={handleTestGeminiKey}
+              className={`px-3.5 py-1.5 rounded-lg border text-xs font-semibold flex items-center gap-1.5 transition-colors ${
+                !formData.geminiApiKey
+                  ? 'border-stone-200 text-stone-400 cursor-not-allowed bg-stone-50'
+                  : 'border-amber-400 text-amber-900 bg-amber-50 hover:bg-amber-100'
+              }`}
+            >
+              {isTestingApi ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-700" />
+                  <span>Testing Connection...</span>
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+                  <span>Test API Connection</span>
+                </>
+              )}
+            </button>
+
+            {apiTestResult && (
+              <div
+                className={`text-[11px] font-semibold px-3 py-1 rounded-lg border flex items-center gap-1.5 ${
+                  apiTestResult.success
+                    ? 'text-emerald-800 bg-emerald-50 border-emerald-200'
+                    : 'text-rose-700 bg-rose-50 border-rose-200'
+                }`}
+              >
+                {apiTestResult.success ? (
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                ) : (
+                  <AlertTriangle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                )}
+                <span>{apiTestResult.message}</span>
+              </div>
+            )}
+          </div>
+
+          <div className="p-3 bg-forest-50/70 border border-forest-100 rounded-xl flex items-start gap-2.5 text-[11px] text-forest-900">
+            <ShieldCheck className="w-4 h-4 text-forest-700 shrink-0 mt-0.5" />
+            <div>
+              <strong className="font-semibold text-forest-900">Always-On Offline Fallback:</strong> If no API key is specified or during network disconnects, the Itinerary Builder will seamlessly generate itineraries using Desi Journey's built-in Himalayan Knowledge Base with verified driving hours and route circuits.
             </div>
           </div>
         </div>
