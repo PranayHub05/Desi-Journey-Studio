@@ -19,10 +19,25 @@ import {
   CheckCircle2,
   AlertCircle,
   Save,
+  Camera,
+  Image as ImageIcon,
+  Link2,
+  ExternalLink,
+  Check,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
-import { Hotel, HotelRoomRate, MealPlanCode } from '../../types';
+import { Hotel, HotelRoomRate, MealPlanCode, HotelPhoto } from '../../types';
 import { formatINR } from '../../lib/calculations';
+
+// Convert Google Drive share links to embeddable thumbnail preview URLs
+function convertGDriveUrl(input: string): string {
+  const trimmed = input.trim();
+  const matchId = trimmed.match(/\/d\/([a-zA-Z0-9_-]+)/) || trimmed.match(/id=([a-zA-Z0-9_-]+)/);
+  if (matchId && matchId[1]) {
+    return `https://drive.google.com/thumbnail?id=${matchId[1]}&sz=w1000`;
+  }
+  return trimmed;
+}
 
 export default function HotelsPage() {
   const { hotels, addHotel, updateHotel, deleteHotel, importHotelsCSV } = useApp();
@@ -36,6 +51,12 @@ export default function HotelsPage() {
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [selectedHotelToEdit, setSelectedHotelToEdit] = useState<Hotel | null>(null);
 
+  // Dedicated Quick Photo Manager Modal state
+  const [photoManagerHotel, setPhotoManagerHotel] = useState<Hotel | null>(null);
+  const [managerPhotos, setManagerPhotos] = useState<HotelPhoto[]>([]);
+  const [managerGdriveInput, setManagerGdriveInput] = useState('');
+  const [photoSaveSuccessMsg, setPhotoSaveSuccessMsg] = useState<string | null>(null);
+
   // CSV Import State
   const [csvFile, setCsvFile] = useState<File | null>(null);
   const [csvPreviewRows, setCsvPreviewRows] = useState<Hotel[]>([]);
@@ -43,6 +64,7 @@ export default function HotelsPage() {
   const [importSuccessMsg, setImportSuccessMsg] = useState<string | null>(null);
 
   // Form State for Add / Edit
+  const [gdriveInput, setGdriveInput] = useState('');
   const [formState, setFormState] = useState<{
     id?: string;
     name: string;
@@ -50,6 +72,7 @@ export default function HotelsPage() {
     starCategory: string;
     address: string;
     imageUrl: string;
+    photos: HotelPhoto[];
     maskedCategoryName: string;
     contactPerson: string;
     phone: string;
@@ -61,6 +84,7 @@ export default function HotelsPage() {
     starCategory: '4-Star',
     address: '',
     imageUrl: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=1000&q=80',
+    photos: [],
     maskedCategoryName: 'Selected 4-Star Premium Resort, Mall Road Area or Similar',
     contactPerson: '',
     phone: '',
@@ -103,6 +127,12 @@ export default function HotelsPage() {
   // Open Edit Modal
   const handleOpenEdit = (hotel: Hotel) => {
     setSelectedHotelToEdit(hotel);
+    const existingPhotos: HotelPhoto[] = hotel.photos && hotel.photos.length > 0
+      ? [...hotel.photos]
+      : hotel.imageUrl
+      ? [{ id: `photo-${Date.now()}`, url: hotel.imageUrl, caption: 'Main Property Photo', isPrimary: true, source: 'url' }]
+      : [];
+
     setFormState({
       id: hotel.id,
       name: hotel.name,
@@ -110,6 +140,7 @@ export default function HotelsPage() {
       starCategory: hotel.starCategory,
       address: hotel.address,
       imageUrl: hotel.imageUrl,
+      photos: existingPhotos,
       maskedCategoryName: hotel.maskedCategoryName,
       contactPerson: hotel.contactPerson || '',
       phone: hotel.phone || '',
@@ -125,6 +156,7 @@ export default function HotelsPage() {
         },
       ],
     });
+    setGdriveInput('');
     setIsEditModalOpen(true);
   };
 
@@ -136,6 +168,15 @@ export default function HotelsPage() {
       starCategory: '4-Star',
       address: '',
       imageUrl: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=1000&q=80',
+      photos: [
+        {
+          id: `photo-${Date.now()}`,
+          url: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=1000&q=80',
+          caption: 'Representative Property Image',
+          isPrimary: true,
+          source: 'url',
+        },
+      ],
       maskedCategoryName: 'Selected 4-Star Premium Resort, Mall Road Area or Similar',
       contactPerson: '',
       phone: '',
@@ -159,18 +200,158 @@ export default function HotelsPage() {
         },
       ],
     });
+    setGdriveInput('');
     setIsAddModalOpen(true);
+  };
+
+  // Photo handlers for Add/Edit Modal
+  const handlePhotoFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    Array.from(files).forEach((file) => {
+      const reader = new FileReader();
+      reader.onload = (uploadEvent) => {
+        const dataUrl = uploadEvent.target?.result as string;
+        if (dataUrl) {
+          const newPhoto: HotelPhoto = {
+            id: `photo-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+            url: dataUrl,
+            caption: file.name.replace(/\.[^/.]+$/, ''),
+            isPrimary: formState.photos.length === 0,
+            source: 'upload',
+          };
+          setFormState((prev) => ({
+            ...prev,
+            imageUrl: prev.photos.length === 0 ? dataUrl : prev.imageUrl,
+            photos: [...prev.photos, newPhoto],
+          }));
+        }
+      };
+      reader.readAsDataURL(file);
+    });
+    e.target.value = '';
+  };
+
+  const handleAddGDriveLink = () => {
+    if (!gdriveInput.trim()) return;
+    const converted = convertGDriveUrl(gdriveInput.trim());
+    const newPhoto: HotelPhoto = {
+      id: `photo-gd-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      url: converted,
+      caption: 'Google Drive Asset',
+      isPrimary: formState.photos.length === 0,
+      source: 'gdrive',
+    };
+    setFormState((prev) => ({
+      ...prev,
+      imageUrl: prev.photos.length === 0 ? converted : prev.imageUrl,
+      photos: [...prev.photos, newPhoto],
+    }));
+    setGdriveInput('');
+  };
+
+  const handleSetPrimaryPhoto = (photoId: string) => {
+    const target = formState.photos.find((p) => p.id === photoId);
+    if (!target) return;
+    setFormState((prev) => ({
+      ...prev,
+      imageUrl: target.url,
+      photos: prev.photos.map((p) => ({
+        ...p,
+        isPrimary: p.id === photoId,
+      })),
+    }));
+  };
+
+  const handleRemovePhoto = (photoId: string) => {
+    setFormState((prev) => {
+      const remaining = prev.photos.filter((p) => p.id !== photoId);
+      const newPrimaryUrl =
+        remaining.length > 0
+          ? remaining.find((p) => p.isPrimary)?.url || remaining[0].url
+          : prev.imageUrl;
+      return {
+        ...prev,
+        imageUrl: newPrimaryUrl,
+        photos: remaining,
+      };
+    });
+  };
+
+  // Quick Photo Manager Modal Handlers
+  const handleOpenPhotoManager = (hotel: Hotel) => {
+    setPhotoManagerHotel(hotel);
+    const photosList: HotelPhoto[] = hotel.photos && hotel.photos.length > 0
+      ? [...hotel.photos]
+      : hotel.imageUrl
+      ? [{ id: `photo-${Date.now()}`, url: hotel.imageUrl, caption: 'Main Property Image', isPrimary: true, source: 'url' }]
+      : [];
+    setManagerPhotos(photosList);
+    setManagerGdriveInput('');
+  };
+
+  const handleManagerPhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    Array.from(files).forEach((file) => {
+      const reader = new FileReader();
+      reader.onload = (uploadEvent) => {
+        const dataUrl = uploadEvent.target?.result as string;
+        if (dataUrl) {
+          const newPhoto: HotelPhoto = {
+            id: `mgr-photo-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+            url: dataUrl,
+            caption: file.name.replace(/\.[^/.]+$/, ''),
+            isPrimary: managerPhotos.length === 0,
+            source: 'upload',
+          };
+          setManagerPhotos((prev) => [...prev, newPhoto]);
+        }
+      };
+      reader.readAsDataURL(file);
+    });
+    e.target.value = '';
+  };
+
+  const handleManagerAddGDrive = () => {
+    if (!managerGdriveInput.trim()) return;
+    const converted = convertGDriveUrl(managerGdriveInput.trim());
+    const newPhoto: HotelPhoto = {
+      id: `mgr-photo-gd-${Date.now()}`,
+      url: converted,
+      caption: 'Google Drive Image',
+      isPrimary: managerPhotos.length === 0,
+      source: 'gdrive',
+    };
+    setManagerPhotos((prev) => [...prev, newPhoto]);
+    setManagerGdriveInput('');
+  };
+
+  const handleSaveManagerPhotos = () => {
+    if (!photoManagerHotel) return;
+    const primaryUrl = managerPhotos.find((p) => p.isPrimary)?.url || managerPhotos[0]?.url || photoManagerHotel.imageUrl;
+    updateHotel(photoManagerHotel.id, {
+      imageUrl: primaryUrl,
+      photos: managerPhotos,
+    });
+    setPhotoSaveSuccessMsg(`✓ Saved ${managerPhotos.length} photos for ${photoManagerHotel.name}!`);
+    setTimeout(() => {
+      setPhotoSaveSuccessMsg(null);
+      setPhotoManagerHotel(null);
+    }, 1500);
   };
 
   // Save Add
   const handleSaveAdd = (e: React.FormEvent) => {
     e.preventDefault();
+    const primaryUrl = formState.photos.find((p) => p.isPrimary)?.url || formState.imageUrl;
     addHotel({
       name: formState.name,
       destination: formState.destination,
       starCategory: formState.starCategory,
       address: formState.address,
-      imageUrl: formState.imageUrl,
+      imageUrl: primaryUrl,
+      photos: formState.photos,
       maskedCategoryName:
         formState.maskedCategoryName ||
         `Selected ${formState.starCategory} Property, ${formState.destination} or Similar`,
@@ -186,12 +367,14 @@ export default function HotelsPage() {
   const handleSaveEdit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedHotelToEdit) return;
+    const primaryUrl = formState.photos.find((p) => p.isPrimary)?.url || formState.imageUrl;
     updateHotel(selectedHotelToEdit.id, {
       name: formState.name,
       destination: formState.destination,
       starCategory: formState.starCategory,
       address: formState.address,
-      imageUrl: formState.imageUrl,
+      imageUrl: primaryUrl,
+      photos: formState.photos,
       maskedCategoryName: formState.maskedCategoryName,
       contactPerson: formState.contactPerson,
       phone: formState.phone,
@@ -559,6 +742,10 @@ export default function HotelsPage() {
                 <div className="absolute top-3 right-3 px-2 py-0.5 rounded-md bg-white/90 backdrop-blur-xs text-forest-900 text-[10px] font-bold">
                   {hotel.destination}
                 </div>
+                <div className="absolute bottom-2.5 right-2.5 px-2 py-0.5 rounded-md bg-forest-900/80 backdrop-blur-xs text-white text-[10px] font-semibold flex items-center gap-1 shadow-2xs">
+                  <Camera className="w-3 h-3 text-gold-400" />
+                  <span>{hotel.photos?.length || 1} {hotel.photos?.length === 1 ? 'Photo' : 'Photos'}</span>
+                </div>
               </div>
 
               {/* Info Body */}
@@ -644,6 +831,15 @@ export default function HotelsPage() {
                 {hotel.phone ? `Phone: ${hotel.phone}` : 'Standard Desk'}
               </span>
               <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => handleOpenPhotoManager(hotel)}
+                  className="px-2.5 py-1 rounded bg-forest-50 hover:bg-forest-100 text-forest-800 border border-forest-200 text-[11px] font-semibold flex items-center gap-1 transition-colors"
+                  title="Upload photos or add Google Drive links"
+                >
+                  <Camera className="w-3 h-3 text-gold-600" />
+                  <span>Photos ({hotel.photos?.length || 1})</span>
+                </button>
                 <button
                   onClick={() => handleOpenEdit(hotel)}
                   className="px-2.5 py-1 rounded bg-stone-200 hover:bg-forest-800 hover:text-white text-stone-700 text-[11px] font-semibold transition-colors"
@@ -764,14 +960,141 @@ export default function HotelsPage() {
                 />
               </div>
 
-              <div>
-                <label className="font-semibold text-stone-700 block mb-1">Image URL</label>
-                <input
-                  type="text"
-                  value={formState.imageUrl}
-                  onChange={(e) => setFormState({ ...formState, imageUrl: e.target.value })}
-                  className="w-full px-3 py-1.5 rounded-lg border border-stone-200"
-                />
+              {/* HOTEL PHOTO SECTION: Standalone Upload & Google Drive Link */}
+              <div className="p-4 rounded-2xl bg-stone-50 border border-stone-200 space-y-3.5">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <div className="flex items-center gap-1.5 font-bold text-forest-900 text-xs">
+                      <Camera className="w-4 h-4 text-emerald-700" />
+                      <span>Hotel Photo Gallery & Uploads</span>
+                    </div>
+                    <p className="text-[11px] text-stone-500">
+                      Upload standalone photo files from your computer or paste Google Drive image share links.
+                    </p>
+                  </div>
+
+                  <label className="cursor-pointer px-3 py-1.5 rounded-lg bg-forest-800 hover:bg-forest-700 text-white font-semibold text-xs flex items-center gap-1.5 shadow-2xs transition-colors self-start sm:self-auto">
+                    <Upload className="w-3.5 h-3.5 text-gold-400" />
+                    <span>Upload Standalone Photo</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      onChange={handlePhotoFileUpload}
+                      className="hidden"
+                    />
+                  </label>
+                </div>
+
+                {/* Google Drive Link Input */}
+                <div className="flex items-center gap-2">
+                  <div className="relative flex-1">
+                    <Link2 className="w-3.5 h-3.5 text-stone-400 absolute left-3 top-2.5" />
+                    <input
+                      type="url"
+                      value={gdriveInput}
+                      onChange={(e) => setGdriveInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleAddGDriveLink();
+                        }
+                      }}
+                      placeholder="Paste Google Drive photo share link (e.g. drive.google.com/file/d/...)..."
+                      className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-stone-200 bg-white text-xs outline-hidden focus:border-forest-600"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleAddGDriveLink}
+                    className="px-3.5 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white font-semibold text-xs whitespace-nowrap"
+                  >
+                    + Add GDrive Link
+                  </button>
+                </div>
+
+                {/* Direct Primary URL Override */}
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] text-stone-500 whitespace-nowrap">Primary Photo URL:</span>
+                  <input
+                    type="text"
+                    value={formState.imageUrl}
+                    onChange={(e) => setFormState({ ...formState, imageUrl: e.target.value })}
+                    className="flex-1 px-3 py-1 rounded-lg border border-stone-200 bg-white text-xs text-stone-700 font-mono"
+                    placeholder="https://..."
+                  />
+                </div>
+
+                {/* Photos Grid */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
+                  {formState.photos.map((p) => {
+                    const isPrimary = p.url === formState.imageUrl || p.isPrimary;
+                    return (
+                      <div
+                        key={p.id}
+                        className={`relative rounded-xl border overflow-hidden bg-white shadow-2xs group flex flex-col justify-between ${
+                          isPrimary ? 'border-emerald-500 ring-2 ring-emerald-500/20' : 'border-stone-200'
+                        }`}
+                      >
+                        <div className="relative h-24 bg-stone-100">
+                          <img
+                            src={p.url}
+                            alt={p.caption || 'Hotel photo'}
+                            className="w-full h-full object-cover"
+                          />
+                          <span
+                            className={`absolute top-1.5 left-1.5 text-[9px] font-bold px-1.5 py-0.5 rounded shadow-xs ${
+                              p.source === 'gdrive'
+                                ? 'bg-blue-600 text-white'
+                                : p.source === 'upload'
+                                ? 'bg-purple-600 text-white'
+                                : 'bg-stone-800 text-white'
+                            }`}
+                          >
+                            {p.source === 'gdrive' ? 'GDrive' : p.source === 'upload' ? 'Local' : 'Web'}
+                          </span>
+                          {isPrimary && (
+                            <span className="absolute top-1.5 right-1.5 text-[9px] font-bold bg-gold-400 text-forest-950 px-1.5 py-0.5 rounded shadow-xs flex items-center gap-0.5">
+                              <Star className="w-2.5 h-2.5 fill-forest-950" />
+                              Primary
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="p-2 space-y-1">
+                          <div className="text-[10px] text-stone-600 truncate font-medium">
+                            {p.caption || 'Photo'}
+                          </div>
+                          <div className="flex items-center justify-between gap-1 pt-1 border-t border-stone-100">
+                            {!isPrimary && (
+                              <button
+                                type="button"
+                                onClick={() => handleSetPrimaryPhoto(p.id)}
+                                className="text-[10px] text-emerald-700 hover:underline font-semibold"
+                              >
+                                Set Primary
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => handleRemovePhoto(p.id)}
+                              className="text-stone-400 hover:text-rose-600 p-0.5 rounded ml-auto"
+                              title="Delete photo"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {formState.photos.length === 0 && (
+                    <div className="col-span-full py-6 text-center text-stone-400 italic text-xs">
+                      No photos uploaded yet. Upload an image or add a Google Drive link above.
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* MULTI-RATE SHEET TABLE EDITOR */}
@@ -1063,6 +1386,192 @@ export default function HotelsPage() {
                 <CheckCircle2 className="w-4 h-4" />
                 <span>Commit & Import {csvPreviewRows.length} Properties</span>
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* QUICK PHOTO MANAGER MODAL */}
+      {photoManagerHotel && (
+        <div className="fixed inset-0 bg-forest-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-3xl max-w-2xl w-full p-6 shadow-2xl border border-stone-200 animate-in zoom-in-95 duration-150 max-h-[90vh] flex flex-col text-xs space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-stone-100">
+              <div className="flex items-center gap-2">
+                <Camera className="w-5 h-5 text-emerald-700" />
+                <div>
+                  <h2 className="text-sm font-bold text-forest-900">
+                    Property Photos: {photoManagerHotel.name}
+                  </h2>
+                  <p className="text-[11px] text-stone-500">
+                    {photoManagerHotel.starCategory} • {photoManagerHotel.destination}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPhotoManagerHotel(null)}
+                className="text-stone-400 hover:text-stone-600 p-1 rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {photoSaveSuccessMsg && (
+              <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 font-semibold text-xs flex items-center gap-2">
+                <Check className="w-4 h-4 text-emerald-600" />
+                <span>{photoSaveSuccessMsg}</span>
+              </div>
+            )}
+
+            {/* Upload & Link Controls */}
+            <div className="p-3.5 rounded-xl bg-stone-50 border border-stone-200 space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <span className="font-semibold text-forest-900">Add New Property Photo:</span>
+                <label className="cursor-pointer px-3 py-1.5 rounded-lg bg-forest-800 hover:bg-forest-700 text-white font-semibold text-xs flex items-center gap-1.5 shadow-2xs transition-colors self-start sm:self-auto">
+                  <Upload className="w-3.5 h-3.5 text-gold-400" />
+                  <span>Upload Local Photo File</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    onChange={handleManagerPhotoUpload}
+                    className="hidden"
+                  />
+                </label>
+              </div>
+
+              {/* Google Drive Link Input */}
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1">
+                  <Link2 className="w-3.5 h-3.5 text-stone-400 absolute left-3 top-2.5" />
+                  <input
+                    type="url"
+                    value={managerGdriveInput}
+                    onChange={(e) => setManagerGdriveInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleManagerAddGDrive();
+                      }
+                    }}
+                    placeholder="Paste Google Drive photo share link (e.g. drive.google.com/file/d/...)..."
+                    className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-stone-200 bg-white text-xs outline-hidden focus:border-forest-600"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={handleManagerAddGDrive}
+                  className="px-3.5 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white font-semibold text-xs whitespace-nowrap"
+                >
+                  + Add GDrive Link
+                </button>
+              </div>
+            </div>
+
+            {/* Photos Grid */}
+            <div className="overflow-y-auto flex-1 pr-1">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                {managerPhotos.map((p, idx) => {
+                  const isPrimary = p.isPrimary || (idx === 0 && !managerPhotos.some((x) => x.isPrimary));
+                  return (
+                    <div
+                      key={p.id}
+                      className={`relative rounded-xl border overflow-hidden bg-white shadow-2xs group flex flex-col justify-between ${
+                        isPrimary ? 'border-emerald-500 ring-2 ring-emerald-500/20' : 'border-stone-200'
+                      }`}
+                    >
+                      <div className="relative h-28 bg-stone-100">
+                        <img
+                          src={p.url}
+                          alt={p.caption || 'Hotel Photo'}
+                          className="w-full h-full object-cover"
+                        />
+                        <span
+                          className={`absolute top-1.5 left-1.5 text-[9px] font-bold px-1.5 py-0.5 rounded shadow-xs ${
+                            p.source === 'gdrive'
+                              ? 'bg-blue-600 text-white'
+                              : p.source === 'upload'
+                              ? 'bg-purple-600 text-white'
+                              : 'bg-stone-800 text-white'
+                          }`}
+                        >
+                          {p.source === 'gdrive' ? 'GDrive' : p.source === 'upload' ? 'Local' : 'Web'}
+                        </span>
+                        {isPrimary && (
+                          <span className="absolute top-1.5 right-1.5 text-[9px] font-bold bg-gold-400 text-forest-950 px-1.5 py-0.5 rounded shadow-xs flex items-center gap-0.5">
+                            <Star className="w-2.5 h-2.5 fill-forest-950" />
+                            Primary
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="p-2 space-y-1">
+                        <div className="text-[10px] text-stone-600 truncate font-medium">
+                          {p.caption || 'Photo Asset'}
+                        </div>
+                        <div className="flex items-center justify-between gap-1 pt-1 border-t border-stone-100">
+                          {!isPrimary && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setManagerPhotos((prev) =>
+                                  prev.map((photo) => ({
+                                    ...photo,
+                                    isPrimary: photo.id === p.id,
+                                  }))
+                                );
+                              }}
+                              className="text-[10px] text-emerald-700 hover:underline font-semibold"
+                            >
+                              Set Primary
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setManagerPhotos((prev) => prev.filter((photo) => photo.id !== p.id));
+                            }}
+                            className="text-stone-400 hover:text-rose-600 p-0.5 rounded ml-auto"
+                            title="Delete photo"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {managerPhotos.length === 0 && (
+                  <div className="col-span-full py-12 text-center text-stone-400 italic text-xs">
+                    No photos currently attached. Upload a file or add a Google Drive link above.
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="pt-3 border-t border-stone-100 flex items-center justify-between">
+              <span className="text-[11px] text-stone-500">
+                Total: <strong>{managerPhotos.length}</strong> photos
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPhotoManagerHotel(null)}
+                  className="px-4 py-2 rounded-xl border border-stone-200 text-stone-700 hover:bg-stone-50 font-medium text-xs"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveManagerPhotos}
+                  className="px-4 py-2 rounded-xl bg-forest-800 hover:bg-forest-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-xs"
+                >
+                  <Save className="w-3.5 h-3.5 text-gold-400" />
+                  <span>Save Photos to Hotel</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>

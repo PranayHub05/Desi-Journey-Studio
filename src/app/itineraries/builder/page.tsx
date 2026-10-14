@@ -37,6 +37,12 @@ import {
   FileText,
   Layers,
   Bookmark,
+  Package,
+  BookmarkPlus,
+  ArrowLeftRight,
+  Search,
+  Check,
+  ExternalLink,
 } from 'lucide-react';
 import { useApp } from '../../../context/AppContext';
 import {
@@ -47,6 +53,8 @@ import {
   MealPlanCode,
   Quotation,
   QuotationCustomization,
+  TripTemplate,
+  Attraction,
 } from '../../../types';
 import {
   formatINR,
@@ -73,6 +81,7 @@ function ItineraryBuilderContent() {
     vehicles,
     destinations,
     tripTemplates,
+    addTripTemplate,
     companySettings,
     createQuotation,
     updateQuotation,
@@ -85,11 +94,11 @@ function ItineraryBuilderContent() {
   const [currentStep, setCurrentStep] = useState<number>(1);
 
   // Core Form State
-  const [guestName, setGuestName] = useState('Kapoor Family');
-  const [guestPhone, setGuestPhone] = useState('+91 98201 44552');
-  const [guestEmail, setGuestEmail] = useState('kapoor@example.com');
-  const [tripTitle, setTripTitle] = useState('Romantic Himachal: Shimla & Manali Circuit');
-  const [startDate, setStartDate] = useState('2026-11-01');
+  const [guestName, setGuestName] = useState('');
+  const [guestPhone, setGuestPhone] = useState('');
+  const [guestEmail, setGuestEmail] = useState('');
+  const [tripTitle, setTripTitle] = useState('');
+  const [startDate, setStartDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [nights, setNights] = useState<number>(5);
   const [adults, setAdults] = useState<number>(2);
   const [children, setChildren] = useState<number>(0);
@@ -121,13 +130,16 @@ function ItineraryBuilderContent() {
   const [aiNoticeMessage, setAiNoticeMessage] = useState<string | null>(null);
 
   // Route & Stops
-  const [routeStops, setRouteStops] = useState<string[]>([
-    'Chandigarh',
-    'Shimla',
-    'Kullu',
-    'Manali',
-    'Chandigarh',
-  ]);
+  const [routeStops, setRouteStops] = useState<string[]>([]);
+  // Pre-made trip template states
+  const [isTemplatePickerOpen, setIsTemplatePickerOpen] = useState(false);
+  const [isSaveTemplateModalOpen, setIsSaveTemplateModalOpen] = useState(false);
+  const [newTemplateRegion, setNewTemplateRegion] = useState('South India');
+  const [newTemplateIdealFor, setNewTemplateIdealFor] = useState('Families & Leisure');
+  const [newTemplateOverview, setNewTemplateOverview] = useState('');
+  const [templateFilterCategory, setTemplateFilterCategory] = useState<string>('All');
+  const [sightseeingFilter, setSightseeingFilter] = useState('');
+  const [selectedAttractionDayTarget, setSelectedAttractionDayTarget] = useState<number>(1);
   const [newStopInput, setNewStopInput] = useState('');
 
   // Selected Fleet
@@ -436,6 +448,18 @@ function ItineraryBuilderContent() {
     }
   }, [editQuoteId, fromLeadId, quotations, leads, vehicles]);
 
+  // Auto-load template if templateId is in query params
+  const templateQueryParam = searchParams.get('templateId') || searchParams.get('template');
+  useEffect(() => {
+    if (templateQueryParam && tripTemplates.length > 0) {
+      const foundTmpl = tripTemplates.find((t) => t.id === templateQueryParam);
+      if (foundTmpl) {
+        handleApplyTemplate(foundTmpl);
+      }
+    }
+  }, [templateQueryParam, tripTemplates]);
+
+
   // If days are empty, seed days based on duration
   useEffect(() => {
     if (days.length === 0 && duration.isValid) {
@@ -444,7 +468,8 @@ function ItineraryBuilderContent() {
         const isFirst = i === 1;
         const isLast = i === duration.days;
         const dayDate = addDaysToDate(startDate, i - 1);
-        const destName = i <= 2 ? 'Shimla' : i <= duration.days - 1 ? 'Manali' : 'Departure';
+        const currentStop = routeStops[Math.min(i - 1, Math.max(0, routeStops.length - 1))] || 'Destination';
+        const destName = isLast ? 'Departure' : currentStop;
         const matchingHotel = hotels.find((h) => h.destination.toLowerCase() === destName.toLowerCase());
 
         initialDays.push({
@@ -452,16 +477,8 @@ function ItineraryBuilderContent() {
           dayNumber: i,
           date: dayDate,
           dayType: isFirst ? 'Arrival & Transfer' : isLast ? 'Departure' : 'Local Sightseeing',
-          title: isFirst
-            ? 'Arrival & Transfer to Shimla'
-            : isLast
-            ? 'Departure with Cherished Memories'
-            : `${destName} Guided Sightseeing & Exploration`,
-          routeTitle: isFirst
-            ? 'Chandigarh to Shimla (115 km / 3.5 hrs)'
-            : isLast
-            ? 'Manali to Chandigarh Airport (290 km / 8 hrs)'
-            : `${destName} Local Circuit`,
+          title: isFirst ? `Arrival & Welcome to ${destName}` : isLast ? 'Departure with Cherished Memories' : `${destName} Guided Sightseeing & Exploration`,
+          routeTitle: isFirst ? `Arrival Transfer to ${destName}` : isLast ? `${destName} to Airport / Station Transfer` : `${destName} Sightseeing Circuit`,
           distanceKm: isFirst ? 115 : isLast ? 290 : 35,
           driveTimeHours: isFirst ? 3.5 : isLast ? 8.0 : 1.5,
           isTravelEstimate: false,
@@ -702,9 +719,99 @@ function ItineraryBuilderContent() {
     setDays([...days, newDay]);
   };
 
-  const handleApplyTemplate = (tmpl: any) => {
+  const handleApplyTemplate = (tmpl: TripTemplate) => {
     setTripTitle(tmpl.title);
-    setRouteStops(tmpl.suggestedRoute);
+    if (tmpl.suggestedRoute && tmpl.suggestedRoute.length > 0) {
+      setRouteStops([...tmpl.suggestedRoute]);
+    }
+    if (tmpl.durationNights) {
+      setNights(tmpl.durationNights);
+    }
+    if (tmpl.vehicleId) {
+      setSelectedVehicleId(tmpl.vehicleId);
+    }
+    if (tmpl.inclusions && tmpl.inclusions.length > 0) {
+      setInclusions([...tmpl.inclusions]);
+    }
+    if (tmpl.exclusions && tmpl.exclusions.length > 0) {
+      setExclusions([...tmpl.exclusions]);
+    }
+    if (tmpl.termsAndConditions && tmpl.termsAndConditions.length > 0) {
+      setTerms([...tmpl.termsAndConditions]);
+    }
+    if (tmpl.days && tmpl.days.length > 0) {
+      const remappedDays: ItineraryDay[] = tmpl.days.map((d: any, idx: number) => ({
+        ...d,
+        id: `day-tmpl-${idx + 1}-${Date.now()}`,
+        date: addDaysToDate(startDate, idx),
+        dayNumber: idx + 1,
+      }));
+      setDays(remappedDays);
+      setNights(remappedDays.length - 1);
+    }
+    setIsTemplatePickerOpen(false);
+    setSavedSuccessMsg(`✨ Successfully loaded "${tmpl.title}" pre-made package!`);
+    setTimeout(() => setSavedSuccessMsg(null), 3500);
+  };
+
+  const handleSaveCurrentAsTemplate = () => {
+    if (!tripTitle.trim()) {
+      alert('Please enter a title for this trip package.');
+      return;
+    }
+    addTripTemplate({
+      title: tripTitle.trim(),
+      region: newTemplateRegion || 'Custom',
+      durationNights: nights,
+      durationDays: duration.days,
+      suggestedRoute: routeStops.length > 0 ? routeStops : ['Custom Route'],
+      overview: newTemplateOverview.trim() || `${nights}N/${duration.days}D bespoke tour package covering ${routeStops.join(' - ')}.`,
+      idealFor: newTemplateIdealFor.trim() || 'Families, Couples, Leisure Seekers',
+      vehicleId: selectedVehicleId,
+      vehicleName: vehicles.find((v) => v.id === selectedVehicleId)?.displayName,
+      days: days.map((d, i) => ({ ...d, dayNumber: i + 1 })),
+      inclusions: [...inclusions],
+      exclusions: [...exclusions],
+      termsAndConditions: [...terms],
+      isCustom: true,
+    });
+    setIsSaveTemplateModalOpen(false);
+    setSavedSuccessMsg(`🎉 Saved "${tripTitle}" into Pre-Made Trips library!`);
+    setTimeout(() => setSavedSuccessMsg(null), 4000);
+  };
+
+  const handleMoveStop = (index: number, direction: -1 | 1) => {
+    const targetIdx = index + direction;
+    if (targetIdx < 0 || targetIdx >= routeStops.length) return;
+    const nextStops = [...routeStops];
+    const temp = nextStops[index];
+    nextStops[index] = nextStops[targetIdx];
+    nextStops[targetIdx] = temp;
+    setRouteStops(nextStops);
+  };
+
+  const handleInjectAttraction = (att: Attraction, dayNum: number) => {
+    const targetIdx = dayNum - 1;
+    if (targetIdx < 0 || targetIdx >= days.length) {
+      alert(`Please choose a valid day between Day 1 and Day ${days.length}`);
+      return;
+    }
+    const newAct: DayActivity = {
+      id: `act-kb-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      timeSlot: '02:30 PM',
+      title: att.name,
+      description: att.description || `Visit to ${att.name} in ${att.destination}.`,
+      location: att.destination,
+      type: 'Sightseeing',
+      isEstimate: false,
+    };
+    setDays((prev) =>
+      prev.map((d, idx) =>
+        idx === targetIdx ? { ...d, activities: [...d.activities, newAct] } : d
+      )
+    );
+    setSavedSuccessMsg(`✓ Added "${att.name}" to Day ${dayNum} timeline!`);
+    setTimeout(() => setSavedSuccessMsg(null), 3000);
   };
 
   const steps = [
@@ -737,12 +844,30 @@ function ItineraryBuilderContent() {
             </p>
           </div>
 
-          <div className="flex items-center gap-2 self-start md:self-auto">
+          <div className="flex items-center gap-2 self-start md:self-auto flex-wrap">
             {savedSuccessMsg && (
               <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-200 animate-in fade-in">
                 ✓ {savedSuccessMsg}
               </span>
             )}
+            <button
+              type="button"
+              onClick={() => setIsTemplatePickerOpen(true)}
+              className="px-3 py-2 rounded-xl bg-forest-50 hover:bg-forest-100 text-forest-800 border border-forest-200 font-semibold text-xs flex items-center gap-1.5 transition-colors shadow-2xs"
+              title="Browse & load curated pre-made packages"
+            >
+              <Package className="w-3.5 h-3.5 text-gold-600" />
+              <span>Pre-Made Trips</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsSaveTemplateModalOpen(true)}
+              className="px-3 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 font-semibold text-xs flex items-center gap-1.5 transition-colors shadow-2xs"
+              title="Save current configuration as a reusable pre-made trip"
+            >
+              <BookmarkPlus className="w-3.5 h-3.5 text-amber-600" />
+              <span>Save as Template</span>
+            </button>
             <button
               onClick={handleSaveQuotation}
               className="px-4 py-2 rounded-xl bg-forest-800 hover:bg-forest-700 text-white font-semibold text-xs flex items-center gap-1.5 shadow-xs transition-colors"
@@ -800,6 +925,29 @@ function ItineraryBuilderContent() {
               <div className="flex items-center gap-2 pb-3 border-b border-stone-100">
                 <Users className="w-4 h-4 text-forest-600" />
                 <h2 className="text-sm font-bold text-forest-900">Step 1: Guest & Passenger Configuration</h2>
+              </div>
+
+              {/* Pre-Made Trip Quick Starter Callout */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-xl bg-gradient-to-r from-forest-50 via-forest-50/70 to-amber-50/60 border border-forest-100">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-forest-800 text-gold-400 flex items-center justify-center shrink-0 shadow-2xs">
+                    <Package className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="font-bold text-forest-900 text-xs">Starting from a Curated Route Circuit?</div>
+                    <div className="text-[11px] text-stone-600">
+                      Select pre-made packages like Kerala & Tamil Nadu 12N/13D, Himachal, or Kashmir to auto-populate days, hotels & terms.
+                    </div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsTemplatePickerOpen(true)}
+                  className="px-3 py-1.5 rounded-lg bg-forest-800 hover:bg-forest-700 text-white font-semibold text-xs flex items-center gap-1.5 shadow-2xs whitespace-nowrap self-start sm:self-auto transition-colors"
+                >
+                  <Package className="w-3.5 h-3.5 text-gold-400" />
+                  <span>Browse Pre-Made Trips</span>
+                </button>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1012,27 +1160,62 @@ function ItineraryBuilderContent() {
 
               {/* Sequence Ribbon */}
               <div>
-                <label className="font-semibold text-stone-700 block mb-2">Sequence of Destinations / Stops</label>
-                <div className="flex flex-wrap items-center gap-2 p-3 rounded-xl bg-stone-50 border border-stone-200">
-                  {routeStops.map((stop, idx) => (
-                    <React.Fragment key={idx}>
-                      <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-stone-200 shadow-2xs font-semibold text-forest-900">
-                        <span className="w-4 h-4 rounded-full bg-forest-800 text-gold-400 text-[10px] flex items-center justify-center">
-                          {idx + 1}
-                        </span>
-                        <span>{stop}</span>
-                        <button
-                          onClick={() => setRouteStops(routeStops.filter((_, i) => i !== idx))}
-                          className="text-stone-400 hover:text-rose-600 ml-1"
-                        >
-                          ×
-                        </button>
-                      </div>
-                      {idx < routeStops.length - 1 && (
-                        <ArrowRight className="w-3.5 h-3.5 text-stone-400" />
-                      )}
-                    </React.Fragment>
-                  ))}
+                <div className="flex items-center justify-between mb-2">
+                  <label className="font-semibold text-stone-700 block">Sequence of Destinations / En-route Stops</label>
+                  <span className="text-[11px] text-stone-500">
+                    Use <strong className="text-forest-800">←</strong> / <strong className="text-forest-800">→</strong> arrows to reorder route stops
+                  </span>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2 p-3 rounded-xl bg-stone-50 border border-stone-200 min-h-[56px]">
+                  {routeStops.length === 0 ? (
+                    <div className="text-stone-400 italic text-xs py-1">
+                      No stops added yet. Type a destination stop below or pick a pre-made trip.
+                    </div>
+                  ) : (
+                    routeStops.map((stop, idx) => (
+                      <React.Fragment key={idx}>
+                        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-stone-200 shadow-2xs font-semibold text-forest-900 group">
+                          <span className="w-4 h-4 rounded-full bg-forest-800 text-gold-400 text-[10px] flex items-center justify-center shrink-0">
+                            {idx + 1}
+                          </span>
+                          <span>{stop}</span>
+
+                          <div className="flex items-center gap-0.5 ml-1 border-l border-stone-200 pl-1.5">
+                            <button
+                              type="button"
+                              disabled={idx === 0}
+                              onClick={() => handleMoveStop(idx, -1)}
+                              title="Move left / earlier"
+                              className="p-0.5 text-stone-400 hover:text-forest-800 disabled:opacity-20 hover:bg-stone-100 rounded"
+                            >
+                              <ChevronLeft className="w-3 h-3" />
+                            </button>
+                            <button
+                              type="button"
+                              disabled={idx === routeStops.length - 1}
+                              onClick={() => handleMoveStop(idx, 1)}
+                              title="Move right / later"
+                              className="p-0.5 text-stone-400 hover:text-forest-800 disabled:opacity-20 hover:bg-stone-100 rounded"
+                            >
+                              <ChevronRight className="w-3 h-3" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setRouteStops(routeStops.filter((_, i) => i !== idx))}
+                              title="Remove stop"
+                              className="p-0.5 text-stone-400 hover:text-rose-600 hover:bg-rose-50 rounded ml-0.5"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          </div>
+                        </div>
+                        {idx < routeStops.length - 1 && (
+                          <ArrowRight className="w-3.5 h-3.5 text-stone-400 shrink-0" />
+                        )}
+                      </React.Fragment>
+                    ))
+                  )}
                 </div>
 
                 <div className="flex items-center gap-2 mt-3">
@@ -1040,17 +1223,25 @@ function ItineraryBuilderContent() {
                     type="text"
                     value={newStopInput}
                     onChange={(e) => setNewStopInput(e.target.value)}
-                    placeholder="Add en-route stop (e.g. Kasol, Gulmarg, Pushkar)..."
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && newStopInput.trim()) {
+                        e.preventDefault();
+                        setRouteStops([...routeStops, newStopInput.trim()]);
+                        setNewStopInput('');
+                      }
+                    }}
+                    placeholder="Add en-route stop (e.g. Varkala, Kovalam, Manali, Gulmarg, Udaipur)..."
                     className="flex-1 px-3 py-1.5 rounded-lg border border-stone-200 outline-hidden focus:border-forest-600 text-xs"
                   />
                   <button
+                    type="button"
                     onClick={() => {
                       if (newStopInput.trim()) {
                         setRouteStops([...routeStops, newStopInput.trim()]);
                         setNewStopInput('');
                       }
                     }}
-                    className="px-4 py-1.5 rounded-lg bg-forest-800 hover:bg-forest-700 text-white font-semibold text-xs"
+                    className="px-4 py-1.5 rounded-lg bg-forest-800 hover:bg-forest-700 text-white font-semibold text-xs whitespace-nowrap"
                   >
                     + Add Stop
                   </button>
@@ -1058,33 +1249,94 @@ function ItineraryBuilderContent() {
               </div>
 
               {/* Verified Knowledge Base Sightseeing Suggestions */}
-              <div className="p-4 rounded-xl bg-forest-50 border border-forest-100">
-                <div className="flex items-center gap-2 font-bold text-forest-900 text-xs mb-2">
-                  <Sparkles className="w-4 h-4 text-gold-500" />
-                  <span>Verified Destination Highlights & Sightseeing Knowledge Base</span>
-                </div>
-                <p className="text-[11px] text-stone-600 mb-3">
-                  Click on any verified regional sightseeing point below to automatically inject it into your day schedule:
-                </p>
+              <div className="p-4 rounded-xl bg-forest-50/70 border border-forest-100 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 font-bold text-forest-900 text-xs">
+                    <Sparkles className="w-4 h-4 text-gold-500" />
+                    <span>Verified Destination Sightseeing Knowledge Base</span>
+                  </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] text-stone-500">Inject into:</span>
+                    <select
+                      value={selectedAttractionDayTarget}
+                      onChange={(e) => setSelectedAttractionDayTarget(Number(e.target.value))}
+                      className="px-2 py-1 rounded-md border border-stone-200 bg-white text-xs font-semibold text-forest-900"
+                    >
+                      {days.map((d) => (
+                        <option key={d.dayNumber} value={d.dayNumber}>
+                          Day {d.dayNumber} ({d.hotelDestination || 'Stop'})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Search Bar */}
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 text-stone-400 absolute left-3 top-2.5" />
+                  <input
+                    type="text"
+                    value={sightseeingFilter}
+                    onChange={(e) => setSightseeingFilter(e.target.value)}
+                    placeholder="Search verified attractions by name, destination, or category..."
+                    className="w-full pl-9 pr-3 py-1.5 rounded-lg border border-stone-200 bg-white text-xs outline-hidden focus:border-forest-600"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-h-72 overflow-y-auto pr-1">
                   {destinations
-                    .filter((d) => routeStops.some((s) => s.toLowerCase().includes(d.name.toLowerCase())))
                     .flatMap((d) => d.attractions)
+                    .filter((att) => {
+                      if (sightseeingFilter.trim()) {
+                        const q = sightseeingFilter.toLowerCase();
+                        return (
+                          att.name.toLowerCase().includes(q) ||
+                          att.destination.toLowerCase().includes(q) ||
+                          att.category.toLowerCase().includes(q)
+                        );
+                      }
+                      if (routeStops.length > 0) {
+                        return routeStops.some(
+                          (s) =>
+                            s.toLowerCase().includes(att.destination.toLowerCase()) ||
+                            att.destination.toLowerCase().includes(s.toLowerCase())
+                        );
+                      }
+                      return true;
+                    })
                     .map((att) => (
                       <div
                         key={att.id}
-                        className="p-2.5 rounded-lg bg-white border border-stone-200 flex items-start justify-between gap-2 text-xs"
+                        className="p-3 rounded-xl bg-white border border-stone-200 hover:border-forest-300 transition-all shadow-2xs flex flex-col justify-between gap-2 text-xs"
                       >
                         <div>
-                          <div className="font-semibold text-forest-900">{att.name}</div>
-                          <div className="text-[10px] text-stone-500">
-                            {att.destination} • {att.category} • ~{att.suggestedDurationHours} hrs
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-bold text-forest-900">{att.name}</span>
+                            <span className="text-[10px] font-semibold text-emerald-800 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 shrink-0">
+                              Verified
+                            </span>
                           </div>
+                          <div className="text-[10px] text-stone-500 mt-0.5">
+                            📍 {att.destination} • 🏷️ {att.category} • ⏱️ ~{att.suggestedDurationHours} hrs
+                          </div>
+                          {att.description && (
+                            <p className="text-[11px] text-stone-600 mt-1 line-clamp-2 leading-relaxed">
+                              {att.description}
+                            </p>
+                          )}
                         </div>
-                        <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded">
-                          Verified
-                        </span>
+
+                        <div className="flex items-center justify-between gap-2 pt-2 border-t border-stone-100">
+                          <button
+                            type="button"
+                            onClick={() => handleInjectAttraction(att, selectedAttractionDayTarget)}
+                            className="w-full py-1.5 rounded-lg bg-forest-800 hover:bg-forest-700 text-white font-semibold text-[11px] flex items-center justify-center gap-1 transition-colors"
+                          >
+                            <Plus className="w-3 h-3" />
+                            <span>Add to Day {selectedAttractionDayTarget}</span>
+                          </button>
+                        </div>
                       </div>
                     ))}
                 </div>
@@ -1164,7 +1416,21 @@ function ItineraryBuilderContent() {
                         </span>
                         <div>
                           <div className="font-bold text-forest-900 text-xs flex items-center gap-2">
-                            <span>{formatIndianDate(day.date)}</span>
+                            <input
+                              type="date"
+                              value={day.date}
+                              onChange={(e) => {
+                                const newD = e.target.value;
+                                if (!newD) return;
+                                if (dayIndex === 0) {
+                                  handleStartDateChange(newD);
+                                } else {
+                                  handleUpdateDay(dayIndex, { date: newD });
+                                }
+                              }}
+                              className="px-2 py-0.5 rounded-md border border-stone-300 bg-white text-xs font-semibold text-forest-900 shadow-2xs outline-hidden focus:border-forest-600"
+                              title={dayIndex === 0 ? 'Changing Day 1 date shifts the entire trip timeline sequentially' : `Set date for Day ${day.dayNumber}`}
+                            />
                             <span className="text-stone-400">•</span>
                             <span className="text-emerald-700">{day.dayType}</span>
                           </div>
@@ -2491,6 +2757,264 @@ function ItineraryBuilderContent() {
                   </button>
                 )}
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Pre-Made Trip Packages Picker Modal */}
+      {isTemplatePickerOpen && (
+        <div className="fixed inset-0 bg-forest-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl max-w-4xl w-full max-h-[90vh] flex flex-col shadow-2xl border border-stone-200 animate-in zoom-in-95 duration-150 text-xs">
+            {/* Header */}
+            <div className="p-5 border-b border-stone-100 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-forest-800 text-gold-400 flex items-center justify-center">
+                  <Package className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-forest-900">
+                    Pre-Made Trip Packages & Signature Circuits
+                  </h3>
+                  <p className="text-[11px] text-stone-500">
+                    Select a curated circuit to populate route stops, day timelines, hotels, vehicle, and terms.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsTemplatePickerOpen(false)}
+                className="p-1.5 text-stone-400 hover:text-stone-600 rounded-lg"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Region Filter Chips */}
+            <div className="px-5 pt-3 pb-2 border-b border-stone-100 flex items-center gap-2 overflow-x-auto bg-stone-50/50">
+              {['All', 'South India', 'Himachal', 'Kashmir', 'Rajasthan', 'Custom'].map((cat) => (
+                <button
+                  key={cat}
+                  type="button"
+                  onClick={() => setTemplateFilterCategory(cat)}
+                  className={`px-3 py-1 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors ${
+                    templateFilterCategory === cat
+                      ? 'bg-forest-800 text-white shadow-2xs'
+                      : 'bg-white text-stone-600 border border-stone-200 hover:bg-stone-50'
+                  }`}
+                >
+                  {cat === 'South India' ? 'Kerala & South India' : cat}
+                </button>
+              ))}
+            </div>
+
+            {/* List of Templates */}
+            <div className="p-5 overflow-y-auto space-y-4 flex-1">
+              {tripTemplates
+                .filter((t) => {
+                  if (templateFilterCategory === 'All') return true;
+                  if (templateFilterCategory === 'Custom') return t.isCustom;
+                  return t.region.toLowerCase().includes(templateFilterCategory.toLowerCase());
+                })
+                .map((tmpl) => (
+                  <div
+                    key={tmpl.id}
+                    className="p-4 rounded-xl border border-stone-200 hover:border-forest-300 transition-all bg-white shadow-xs space-y-3"
+                  >
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-bold text-sm text-forest-900">{tmpl.title}</span>
+                        <span className="text-[10px] font-bold text-gold-900 bg-gold-100 px-2 py-0.5 rounded-full border border-gold-200">
+                          {tmpl.durationNights}N / {tmpl.durationDays}D
+                        </span>
+                        <span className="text-[10px] font-semibold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                          {tmpl.region}
+                        </span>
+                        {tmpl.isCustom && (
+                          <span className="text-[10px] font-semibold text-purple-800 bg-purple-50 px-2 py-0.5 rounded border border-purple-200">
+                            Custom Built
+                          </span>
+                        )}
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => handleApplyTemplate(tmpl)}
+                        className="px-4 py-2 rounded-xl bg-forest-800 hover:bg-forest-700 text-white font-semibold text-xs flex items-center justify-center gap-1.5 shadow-xs whitespace-nowrap transition-colors self-start sm:self-auto"
+                      >
+                        <Check className="w-3.5 h-3.5 text-gold-400" />
+                        <span>Apply to Studio</span>
+                      </button>
+                    </div>
+
+                    <p className="text-[11px] text-stone-600 leading-relaxed">{tmpl.overview}</p>
+
+                    {/* Route Flow */}
+                    <div>
+                      <div className="text-[10px] font-bold text-stone-500 uppercase tracking-wider mb-1">
+                        Route Circuit:
+                      </div>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {tmpl.suggestedRoute.map((stop, sIdx) => (
+                          <React.Fragment key={sIdx}>
+                            <span className="px-2 py-0.5 rounded-md bg-stone-100 text-stone-800 font-semibold text-[11px]">
+                              {stop}
+                            </span>
+                            {sIdx < tmpl.suggestedRoute.length - 1 && (
+                              <ArrowRight className="w-3 h-3 text-stone-400" />
+                            )}
+                          </React.Fragment>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-4 text-[11px] text-stone-500 pt-1 border-t border-stone-100">
+                      <span>🚐 Vehicle: <strong className="text-forest-900">{tmpl.vehicleName || 'Private AC Vehicle'}</strong></span>
+                      <span>📅 Timeline: <strong className="text-forest-900">{tmpl.days?.length || 0} Days Mapped</strong></span>
+                      {tmpl.idealFor && (
+                        <span>✨ Ideal for: <strong className="text-forest-900">{tmpl.idealFor}</strong></span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+
+              {tripTemplates.length === 0 && (
+                <div className="text-center py-12 text-stone-400 italic">
+                  No pre-made trip packages found.
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 bg-stone-50 border-t border-stone-200 flex items-center justify-between">
+              <span className="text-[11px] text-stone-500">
+                Total <strong>{tripTemplates.length}</strong> signature packages available in library.
+              </span>
+              <button
+                type="button"
+                onClick={() => setIsTemplatePickerOpen(false)}
+                className="px-4 py-2 rounded-xl border border-stone-200 text-stone-700 hover:bg-stone-100 font-medium text-xs"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Save as Pre-Made Trip Modal */}
+      {isSaveTemplateModalOpen && (
+        <div className="fixed inset-0 bg-forest-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-stone-200 animate-in zoom-in-95 duration-150 text-xs">
+            <div className="flex items-center justify-between pb-3 border-b border-stone-100 mb-4">
+              <div className="flex items-center gap-2">
+                <BookmarkPlus className="w-4 h-4 text-amber-600" />
+                <h3 className="text-sm font-bold text-forest-900">
+                  Save as Pre-Made Trip Package
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsSaveTemplateModalOpen(false)}
+                className="p-1 text-stone-400 hover:text-stone-600 rounded-lg"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-stone-600 mb-4 leading-relaxed">
+              Save this <strong className="text-forest-900">{nights}N / {duration.days}D</strong> itinerary with all its{' '}
+              <strong className="text-forest-900">{days.length} day timelines</strong>, route stops, hotel allotments, and policy clauses into the studio&apos;s reusable Pre-Made Trips catalog.
+            </p>
+
+            <div className="space-y-3.5">
+              <div>
+                <label className="font-semibold text-stone-700 block mb-1">
+                  Trip Package Title *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={tripTitle}
+                  onChange={(e) => setTripTitle(e.target.value)}
+                  placeholder="e.g. Kerala & Tamil Nadu Coastal Splendor"
+                  className="w-full px-3 py-2 rounded-lg border border-stone-200 font-medium text-xs"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-semibold text-stone-700 block mb-1">
+                    Region / Sector
+                  </label>
+                  <select
+                    value={newTemplateRegion}
+                    onChange={(e) => setNewTemplateRegion(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-stone-200 font-medium text-xs bg-white"
+                  >
+                    <option value="South India">South India / Kerala</option>
+                    <option value="Himachal">Himachal Pradesh</option>
+                    <option value="Kashmir">Kashmir & Ladakh</option>
+                    <option value="Rajasthan">Rajasthan</option>
+                    <option value="North East">North East</option>
+                    <option value="Goa & Coastal">Goa & Coastal</option>
+                    <option value="Golden Triangle">Golden Triangle</option>
+                    <option value="Custom">Custom Circuit</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="font-semibold text-stone-700 block mb-1">
+                    Ideal For
+                  </label>
+                  <input
+                    type="text"
+                    value={newTemplateIdealFor}
+                    onChange={(e) => setNewTemplateIdealFor(e.target.value)}
+                    placeholder="e.g. Families, Honeymooners"
+                    className="w-full px-3 py-2 rounded-lg border border-stone-200 font-medium text-xs"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="font-semibold text-stone-700 block mb-1">
+                  Package Overview / Highlights
+                </label>
+                <textarea
+                  rows={3}
+                  value={newTemplateOverview}
+                  onChange={(e) => setNewTemplateOverview(e.target.value)}
+                  placeholder="e.g. 12-night luxury grand circuit covering Trivandrum, Varkala cliff, Kovalam beach, Kanyakumari cape, and Madurai temples."
+                  className="w-full px-3 py-2 rounded-lg border border-stone-200 font-medium text-xs leading-relaxed"
+                />
+              </div>
+
+              {/* Summary pills */}
+              <div className="p-3 rounded-xl bg-stone-50 border border-stone-200 space-y-1.5 text-[11px] text-stone-600">
+                <div className="font-bold text-forest-900">Package Blueprint Snapshot:</div>
+                <div>• Route: <strong className="text-forest-900">{routeStops.join(' → ') || 'Custom Route'}</strong></div>
+                <div>• Schedule: <strong className="text-forest-900">{days.length} Days</strong> with hotels &amp; activities mapped</div>
+                <div>• Policies: <strong className="text-forest-900">{inclusions.length} Inclusions</strong>, <strong className="text-forest-900">{exclusions.length} Exclusions</strong></div>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 mt-5 pt-3 border-t border-stone-100">
+              <button
+                type="button"
+                onClick={() => setIsSaveTemplateModalOpen(false)}
+                className="px-4 py-2 rounded-lg border border-stone-200 text-stone-700 hover:bg-stone-50 font-medium text-xs"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveCurrentAsTemplate}
+                className="px-4 py-2 rounded-lg bg-forest-800 hover:bg-forest-700 text-white font-semibold text-xs flex items-center gap-1.5 shadow-xs"
+              >
+                <BookmarkPlus className="w-3.5 h-3.5 text-gold-400" />
+                <span>Save to Pre-Made Trips</span>
+              </button>
             </div>
           </div>
         </div>

@@ -18,12 +18,14 @@ import {
   ChevronRight,
   ShieldCheck,
   PlusCircle,
+  Package,
+  LogOut,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 
 export const Sidebar: React.FC = () => {
   const pathname = usePathname();
-  const { leads, quotations, currentUser } = useApp();
+  const { leads, quotations, tripTemplates, currentUser, logout } = useApp();
 
   const urgentFollowUpsCount = leads.filter(
     (l) => l.status === 'Follow-up' || l.status === 'New'
@@ -49,6 +51,13 @@ export const Sidebar: React.FC = () => {
       icon: Map,
       badge: `${quotations.length}`,
       badgeColor: 'bg-forest-100 text-forest-800',
+    },
+    {
+      label: 'Pre-Made Trips',
+      href: '/templates',
+      icon: Package,
+      badge: `${tripTemplates.length}`,
+      badgeColor: 'bg-gold-500/20 text-gold-300',
     },
     {
       label: 'Hotel Database',
@@ -199,13 +208,14 @@ export const Sidebar: React.FC = () => {
 
             <div className="pt-1.5 border-t border-forest-700/30 flex justify-between items-center text-[10px]">
               <span className="text-stone-400">{currentUser.title || 'Staff'}</span>
-              <Link
-                href="/login"
-                className="text-gold-400 hover:text-gold-300 font-semibold"
-                title="Switch team member"
+              <button
+                onClick={() => logout()}
+                className="text-stone-400 hover:text-rose-400 font-semibold flex items-center gap-1 transition-colors"
+                title="Sign out of your session"
               >
-                Switch Portal →
-              </Link>
+                <LogOut className="w-3 h-3" />
+                <span>Sign Out</span>
+              </button>
             </div>
           </div>
         ) : (

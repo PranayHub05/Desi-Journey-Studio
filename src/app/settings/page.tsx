@@ -27,6 +27,12 @@ import {
   X,
   Loader2,
   AlertTriangle,
+  Database,
+  CloudUpload,
+  RefreshCw,
+  ExternalLink,
+  Copy,
+  Check,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { AuthUser } from '../../types';
@@ -42,6 +48,10 @@ export default function SettingsPage() {
     updateAuthUser,
     createAuthUser,
     deleteAuthUser,
+    firestoreStatus,
+    firestoreError,
+    syncToFirestore,
+    refreshFromFirestore,
   } = useApp();
 
   const [formData, setFormData] = useState(companySettings);
@@ -50,6 +60,11 @@ export default function SettingsPage() {
   const [showApiKey, setShowApiKey] = useState(false);
   const [isTestingApi, setIsTestingApi] = useState(false);
   const [apiTestResult, setApiTestResult] = useState<{ success: boolean; message: string } | null>(null);
+
+  // Firestore sync state
+  const [isSyncingFirestore, setIsSyncingFirestore] = useState(false);
+  const [firestoreSyncResult, setFirestoreSyncResult] = useState<{ success: boolean; message: string; collectionsWritten?: string[]; error?: string } | null>(null);
+  const [hasCopiedRules, setHasCopiedRules] = useState(false);
 
   // User management state
   const [editingUser, setEditingUser] = useState<AuthUser | null>(null);
@@ -646,6 +661,243 @@ export default function SettingsPage() {
                 </div>
               );
             })}
+          </div>
+        </div>
+
+        {/* Section 6: Cloud Firestore Database & Cloud Sync */}
+        <div className="bg-white p-6 rounded-2xl border border-stone-200 shadow-card space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-stone-100 gap-2">
+            <div className="flex items-center gap-2">
+              <Database className="w-4 h-4 text-forest-600" />
+              <h2 className="text-sm font-bold text-forest-900">6. Cloud Firestore Database & Cloud Sync</h2>
+            </div>
+            <div className="flex items-center gap-2">
+              <span
+                className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border ${
+                  firestoreStatus === 'connected'
+                    ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                    : firestoreStatus === 'syncing'
+                    ? 'bg-sky-50 text-sky-800 border-sky-200 animate-pulse'
+                    : firestoreStatus === 'error'
+                    ? 'bg-amber-50 text-amber-900 border-amber-300'
+                    : 'bg-stone-100 text-stone-600 border-stone-200'
+                }`}
+              >
+                <span
+                  className={`w-2 h-2 rounded-full ${
+                    firestoreStatus === 'connected'
+                      ? 'bg-emerald-500'
+                      : firestoreStatus === 'syncing'
+                      ? 'bg-sky-500 animate-ping'
+                      : firestoreStatus === 'error'
+                      ? 'bg-amber-500'
+                      : 'bg-stone-400'
+                  }`}
+                />
+                <span>
+                  {firestoreStatus === 'connected'
+                    ? 'Connected: desijourneystudio'
+                    : firestoreStatus === 'syncing'
+                    ? 'Syncing Cloud...'
+                    : firestoreStatus === 'error'
+                    ? 'Security Rules Lock'
+                    : 'Offline'}
+                </span>
+              </span>
+            </div>
+          </div>
+
+          {/* Firestore Explanation Banner */}
+          <div className="p-4 rounded-xl bg-forest-50/70 border border-forest-100 text-stone-700 space-y-2">
+            <div className="flex items-start gap-2.5">
+              <div className="w-5 h-5 rounded-full bg-forest-800 text-white flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">
+                ?
+              </div>
+              <div className="space-y-1">
+                <p className="font-bold text-forest-950 text-xs">
+                  Do I need to click "Start collection" in Firebase Console?
+                </p>
+                <p className="text-[11px] leading-relaxed text-stone-600">
+                  <strong className="text-forest-900">No, you do not!</strong> In Google Cloud Firestore, collections do not exist as empty tables—they are automatically created the millisecond the first document is written. Click the <strong>"Sync Database to Firestore"</strong> button below to automatically create and populate all 8 collections for your studio.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Collections Grid */}
+          <div>
+            <label className="font-semibold text-stone-700 block mb-2">
+              System Collections (8 Total):
+            </label>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {[
+                { id: 'agency_settings', label: 'Agency Settings', desc: 'Branding, GST, Bank' },
+                { id: 'users', label: 'Auth Users', desc: 'Admin, Sales & Ops Logins' },
+                { id: 'hotels', label: 'Hotels', desc: 'Tariffs, Photos & Drive' },
+                { id: 'vehicles', label: 'Vehicles', desc: 'Fleet Tariffs & Capacities' },
+                { id: 'trip_templates', label: 'Trip Templates', desc: 'Pre-Made Itineraries' },
+                { id: 'clause_presets', label: 'Clause Presets', desc: 'Terms & Inclusions' },
+                { id: 'leads', label: 'Guest Leads', desc: 'Enquiries & CRM Tracking' },
+                { id: 'quotations', label: 'Quotations', desc: 'Costings & Itineraries' },
+              ].map((c) => (
+                <div key={c.id} className="p-2.5 rounded-xl border border-stone-200 bg-stone-50/60 hover:bg-stone-50 transition-colors">
+                  <div className="flex items-center gap-1.5 font-mono text-[11px] font-bold text-forest-900">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                    <span>{c.id}</span>
+                  </div>
+                  <p className="text-[10px] text-stone-500 font-medium mt-0.5">{c.desc}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Sync Actions Bar */}
+          <div className="p-4 rounded-xl border border-stone-200 bg-white flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div>
+              <p className="font-bold text-stone-800 text-xs">Synchronize All Master Records</p>
+              <p className="text-[11px] text-stone-500">
+                Pushes all current agency data, hotel tariffs, photos, team members, and templates directly to Firestore.
+              </p>
+            </div>
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    await refreshFromFirestore();
+                    alert('Refreshed data from Firestore successfully.');
+                  } catch (e: any) {
+                    alert('Refresh failed: ' + e.message);
+                  }
+                }}
+                className="flex-1 sm:flex-none px-3.5 py-2 rounded-xl border border-stone-200 hover:bg-stone-50 text-stone-700 font-semibold text-xs flex items-center justify-center gap-1.5 transition-colors"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>Refresh</span>
+              </button>
+              <button
+                type="button"
+                disabled={isSyncingFirestore}
+                onClick={async () => {
+                  setIsSyncingFirestore(true);
+                  setFirestoreSyncResult(null);
+                  try {
+                    const res = await syncToFirestore();
+                    setFirestoreSyncResult(res);
+                  } catch (e: any) {
+                    setFirestoreSyncResult({
+                      success: false,
+                      message: e.message || 'Sync failed',
+                      error: e.code || e.message,
+                    });
+                  } finally {
+                    setIsSyncingFirestore(false);
+                  }
+                }}
+                className="flex-1 sm:flex-none px-4 py-2 rounded-xl bg-forest-800 hover:bg-forest-700 disabled:opacity-50 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-xs transition-colors"
+              >
+                {isSyncingFirestore ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Syncing Collections...</span>
+                  </>
+                ) : (
+                  <>
+                    <CloudUpload className="w-3.5 h-3.5" />
+                    <span>⚡ Sync Database to Firestore</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+
+          {/* Sync Result Feedback */}
+          {firestoreSyncResult && (
+            <div
+              className={`p-3.5 rounded-xl border flex items-start gap-2 text-xs animate-in fade-in ${
+                firestoreSyncResult.success
+                  ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                  : 'bg-rose-50 border-rose-200 text-rose-900'
+              }`}
+            >
+              {firestoreSyncResult.success ? (
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+              ) : (
+                <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+              )}
+              <div className="space-y-1">
+                <p className="font-bold">{firestoreSyncResult.message}</p>
+                {firestoreSyncResult.collectionsWritten && firestoreSyncResult.collectionsWritten.length > 0 && (
+                  <p className="text-[11px] text-emerald-800">
+                    Collections created & updated:{' '}
+                    <code className="font-mono bg-emerald-100 px-1 py-0.5 rounded">
+                      {firestoreSyncResult.collectionsWritten.join(', ')}
+                    </code>
+                  </p>
+                )}
+                {firestoreSyncResult.error && (
+                  <p className="text-[11px] font-mono text-rose-800">
+                    Error Code: {firestoreSyncResult.error}
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Firebase Console Security Rules Configuration */}
+          <div className="p-4 rounded-xl border border-amber-200 bg-amber-50/60 text-xs space-y-2.5">
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex items-center gap-2 text-amber-950 font-bold">
+                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                <span>Important: Firestore Security Rules in Firebase Console</span>
+              </div>
+              <a
+                href="https://console.firebase.google.com/project/desijourneystudio/firestore/rules"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[11px] font-bold text-amber-900 hover:text-amber-700 inline-flex items-center gap-1 underline shrink-0"
+              >
+                <span>Firebase Console Rules</span>
+                <ExternalLink className="w-3 h-3" />
+              </a>
+            </div>
+            <p className="text-[11px] text-amber-900 leading-relaxed">
+              When a Firestore database is newly created in Firebase, it starts in locked production mode (<code className="bg-amber-100 px-1 py-0.5 rounded font-mono">allow read, write: if false;</code>), which causes browsers to get <code className="bg-amber-100 px-1 py-0.5 rounded font-mono text-rose-700">permission-denied</code>. In your Firebase Console, go to <strong>Firestore Database &gt; Rules</strong> tab and paste:
+            </p>
+
+            <div className="relative">
+              <pre className="p-3 bg-stone-900 text-stone-100 rounded-lg font-mono text-[11px] overflow-x-auto leading-snug">
+{`rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if true;
+    }
+  }
+}`}
+              </pre>
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText(`rules_version = '2';\nservice cloud.firestore {\n  match /databases/{database}/documents {\n    match /{document=**} {\n      allow read, write: if true;\n    }\n  }\n}`);
+                  setHasCopiedRules(true);
+                  setTimeout(() => setHasCopiedRules(false), 2500);
+                }}
+                className="absolute top-2 right-2 px-2.5 py-1 rounded bg-stone-800 hover:bg-stone-700 text-stone-200 text-[10px] font-bold flex items-center gap-1 border border-stone-700 transition-colors"
+              >
+                {hasCopiedRules ? (
+                  <>
+                    <Check className="w-3 h-3 text-emerald-400" />
+                    <span>Copied!</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-3 h-3" />
+                    <span>Copy Rules</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
 

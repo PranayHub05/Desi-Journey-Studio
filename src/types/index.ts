@@ -108,6 +108,14 @@ export interface HotelRoomRate {
   validTo?: string;
 }
 
+export interface HotelPhoto {
+  id: string;
+  url: string;
+  caption?: string;
+  isPrimary?: boolean;
+  source?: 'upload' | 'gdrive' | 'url';
+}
+
 export interface Hotel {
   id: string;
   name: string;
@@ -119,6 +127,8 @@ export interface Hotel {
   email?: string;
   imageUrl: string;
   galleryUrls?: string[];
+  photos?: HotelPhoto[];
+  gdriveLinks?: string[];
   rates: HotelRoomRate[];
   supplierId?: string;
   supplierName?: string;
@@ -193,6 +203,13 @@ export interface TripTemplate {
   durationDays: number;
   overview: string;
   idealFor: string;
+  days?: ItineraryDay[];
+  inclusions?: string[];
+  exclusions?: string[];
+  termsAndConditions?: string[];
+  vehicleId?: string;
+  vehicleName?: string;
+  isCustom?: boolean;
 }
 
 export type DayType =
@@ -383,6 +400,7 @@ export interface CompanySettings {
   email: string;
   website: string;
   headOfficeAddress: string;
+  adminName?: string;
   gstin: string;
   panNumber: string;
   bankName: string;

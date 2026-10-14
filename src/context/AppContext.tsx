@@ -34,6 +34,34 @@ import {
   systemAuthUsers,
   defaultClausePresets,
 } from '../lib/mockData';
+import {
+  COLLECTIONS,
+  getCompanySettingsFromFirestore,
+  saveCompanySettingsToFirestore,
+  getLeadsFromFirestore,
+  saveLeadToFirestore,
+  deleteLeadFromFirestore,
+  getHotelsFromFirestore,
+  saveHotelToFirestore,
+  deleteHotelFromFirestore,
+  getVehiclesFromFirestore,
+  saveVehicleToFirestore,
+  deleteVehicleFromFirestore,
+  getTripTemplatesFromFirestore,
+  saveTripTemplateToFirestore,
+  deleteTripTemplateFromFirestore,
+  getClausePresetsFromFirestore,
+  saveClausePresetToFirestore,
+  deleteClausePresetFromFirestore,
+  getQuotationsFromFirestore,
+  saveQuotationToFirestore,
+  deleteQuotationFromFirestore,
+  getAuthUsersFromFirestore,
+  saveAuthUserToFirestore,
+  deleteAuthUserFromFirestore,
+  syncAllMasterDataToFirestore,
+} from '../lib/firestoreService';
+import { isFirebaseConfigured } from '../lib/firebase';
 
 interface AppContextType {
   currentUser: UserProfile | null;
@@ -42,6 +70,13 @@ interface AppContextType {
   logout: () => void;
   companySettings: CompanySettings;
   updateCompanySettings: (settings: Partial<CompanySettings>) => void;
+
+  // Cloud Firestore Status & Operations
+  isHydrated: boolean;
+  firestoreStatus: 'connected' | 'syncing' | 'error' | 'offline';
+  firestoreError: string | null;
+  syncToFirestore: () => Promise<{ success: boolean; message: string; collectionsWritten?: string[]; error?: string }>;
+  refreshFromFirestore: () => Promise<void>;
 
   // Team & Auth Users
   authUsers: AuthUser[];
@@ -83,6 +118,9 @@ interface AppContextType {
   updateAttraction: (destinationId: string, attractionId: string, updates: Partial<Attraction>) => void;
   deleteAttraction: (destinationId: string, attractionId: string) => void;
   tripTemplates: TripTemplate[];
+  addTripTemplate: (template: Omit<TripTemplate, 'id'>) => TripTemplate;
+  updateTripTemplate: (id: string, updates: Partial<TripTemplate>) => void;
+  deleteTripTemplate: (id: string) => void;
 
   // Quotations
   quotations: Quotation[];
@@ -114,105 +152,221 @@ interface AppContextType {
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 const STORAGE_KEYS = {
-  SETTINGS: 'dj_company_settings_v1',
-  LEADS: 'dj_leads_v1',
-  HOTELS: 'dj_hotels_v1',
-  VEHICLES: 'dj_vehicles_v1',
-  DESTINATIONS: 'dj_destinations_v1',
-  QUOTATIONS: 'dj_quotations_v1',
-  SHARE_EVENTS: 'dj_share_events_v1',
-  SUPPLIERS: 'dj_suppliers_v1',
-  SUPPLIER_PAYMENTS: 'dj_supplier_payments_v1',
-  CUSTOMER_PAYMENTS: 'dj_customer_payments_v1',
+  SETTINGS: 'dj_company_settings_v2',
+  LEADS: 'dj_leads_v2',
+  HOTELS: 'dj_hotels_v2',
+  VEHICLES: 'dj_vehicles_v2',
+  DESTINATIONS: 'dj_destinations_v2',
+  QUOTATIONS: 'dj_quotations_v2',
+  SHARE_EVENTS: 'dj_share_events_v2',
+  SUPPLIERS: 'dj_suppliers_v2',
+  SUPPLIER_PAYMENTS: 'dj_supplier_payments_v2',
+  CUSTOMER_PAYMENTS: 'dj_customer_payments_v2',
   USER_ROLE: 'dj_user_role_v1',
   LOGGED_IN_USER: 'dj_logged_in_user_v2',
   AUTH_USERS: 'dj_auth_users_v3',
   CLAUSE_PRESETS: 'dj_clause_presets_v1',
+  TRIP_TEMPLATES: 'dj_trip_templates_v2',
 };
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [authUsers, setAuthUsers] = useState<AuthUser[]>(systemAuthUsers);
-  const [currentUser, setCurrentUser] = useState<UserProfile | null>({
-    id: systemAuthUsers[0].id,
-    name: systemAuthUsers[0].name,
-    email: systemAuthUsers[0].email,
-    role: systemAuthUsers[0].role,
-    phone: systemAuthUsers[0].phone,
-    title: systemAuthUsers[0].title,
-  });
+  // Default to null so user MUST log in when visiting the app
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
 
   const [companySettings, setCompanySettings] = useState<CompanySettings>(initialCompanySettings);
   const [clausePresets, setClausePresets] = useState<TripClausePreset[]>(defaultClausePresets);
-  const [leads, setLeads] = useState<Lead[]>(sampleLeads);
+  const [leads, setLeads] = useState<Lead[]>([]);
   const [hotels, setHotels] = useState<Hotel[]>(sampleHotels);
   const [vehicles, setVehicles] = useState<Vehicle[]>(sampleVehicles);
   const [destinations, setDestinations] = useState<Destination[]>(sampleDestinations);
-  const [tripTemplates] = useState<TripTemplate[]>(sampleTripTemplates);
-  const [quotations, setQuotations] = useState<Quotation[]>(sampleQuotations);
+  const [tripTemplates, setTripTemplates] = useState<TripTemplate[]>(sampleTripTemplates);
+  const [quotations, setQuotations] = useState<Quotation[]>([]);
   const [shareEvents, setShareEvents] = useState<ShareEvent[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>(sampleSuppliers);
-  const [supplierPayments, setSupplierPayments] = useState<SupplierPaymentEntry[]>(sampleSupplierPayments);
-  const [customerPayments, setCustomerPayments] = useState<CustomerPayment[]>(sampleCustomerPayments);
+  const [supplierPayments, setSupplierPayments] = useState<SupplierPaymentEntry[]>([]);
+  const [customerPayments, setCustomerPayments] = useState<CustomerPayment[]>([]);
   const [isSearchOpen, setIsSearchOpen] = useState<boolean>(false);
   const [isHydrated, setIsHydrated] = useState<boolean>(false);
+  const [firestoreStatus, setFirestoreStatus] = useState<'connected' | 'syncing' | 'error' | 'offline'>(
+    isFirebaseConfigured ? 'syncing' : 'offline'
+  );
+  const [firestoreError, setFirestoreError] = useState<string | null>(null);
 
-  // Load from LocalStorage on mount
+  // Load from LocalStorage and Cloud Firestore on mount
   useEffect(() => {
-    try {
-      const savedAuthUsers = localStorage.getItem(STORAGE_KEYS.AUTH_USERS);
-      if (savedAuthUsers) {
-        setAuthUsers(JSON.parse(savedAuthUsers));
+    let isMounted = true;
+
+    const hydrateAppData = async () => {
+      let initialSettings = initialCompanySettings;
+      let initialAuthUsers = systemAuthUsers;
+      let initialHotels = sampleHotels;
+      let initialVehicles = sampleVehicles;
+      let initialTemplates = sampleTripTemplates;
+      let initialPresets = defaultClausePresets;
+      let initialLeadsList = sampleLeads;
+      let initialQuoteList = sampleQuotations;
+
+      // 1. First, hydrate from localStorage if available
+      try {
+        const savedAuthUsers = localStorage.getItem(STORAGE_KEYS.AUTH_USERS);
+        if (savedAuthUsers) {
+          initialAuthUsers = JSON.parse(savedAuthUsers);
+          setAuthUsers(initialAuthUsers);
+        }
+
+        const savedPresets = localStorage.getItem(STORAGE_KEYS.CLAUSE_PRESETS);
+        if (savedPresets) {
+          initialPresets = JSON.parse(savedPresets);
+          setClausePresets(initialPresets);
+        }
+
+        const savedUser = localStorage.getItem(STORAGE_KEYS.LOGGED_IN_USER);
+        if (savedUser) {
+          setCurrentUser(JSON.parse(savedUser));
+        }
+
+        const savedSettings = localStorage.getItem(STORAGE_KEYS.SETTINGS);
+        if (savedSettings) {
+          initialSettings = JSON.parse(savedSettings);
+          setCompanySettings(initialSettings);
+        }
+
+        const savedLeads = localStorage.getItem(STORAGE_KEYS.LEADS);
+        if (savedLeads) {
+          initialLeadsList = JSON.parse(savedLeads);
+          setLeads(initialLeadsList);
+        }
+
+        const savedHotels = localStorage.getItem(STORAGE_KEYS.HOTELS);
+        if (savedHotels) {
+          initialHotels = JSON.parse(savedHotels);
+          setHotels(initialHotels);
+        }
+
+        const savedVehicles = localStorage.getItem(STORAGE_KEYS.VEHICLES);
+        if (savedVehicles) {
+          initialVehicles = JSON.parse(savedVehicles);
+          setVehicles(initialVehicles);
+        }
+
+        const savedDestinations = localStorage.getItem(STORAGE_KEYS.DESTINATIONS);
+        if (savedDestinations) setDestinations(JSON.parse(savedDestinations));
+
+        const savedTemplates = localStorage.getItem(STORAGE_KEYS.TRIP_TEMPLATES);
+        if (savedTemplates) {
+          initialTemplates = JSON.parse(savedTemplates);
+          setTripTemplates(initialTemplates);
+        }
+
+        const savedQuotations = localStorage.getItem(STORAGE_KEYS.QUOTATIONS);
+        if (savedQuotations) {
+          initialQuoteList = JSON.parse(savedQuotations);
+          setQuotations(initialQuoteList);
+        }
+
+        const savedShares = localStorage.getItem(STORAGE_KEYS.SHARE_EVENTS);
+        if (savedShares) setShareEvents(JSON.parse(savedShares));
+
+        const savedSuppliers = localStorage.getItem(STORAGE_KEYS.SUPPLIERS);
+        if (savedSuppliers) setSuppliers(JSON.parse(savedSuppliers));
+
+        const savedSpayments = localStorage.getItem(STORAGE_KEYS.SUPPLIER_PAYMENTS);
+        if (savedSpayments) setSupplierPayments(JSON.parse(savedSpayments));
+
+        const savedCpayments = localStorage.getItem(STORAGE_KEYS.CUSTOMER_PAYMENTS);
+        if (savedCpayments) setCustomerPayments(JSON.parse(savedCpayments));
+
+        const savedRole = localStorage.getItem(STORAGE_KEYS.USER_ROLE) as UserRole | null;
+        if (savedRole) {
+          setCurrentUser((u) => (u ? { ...u, role: savedRole } : null));
+        }
+      } catch (e) {
+        console.warn('LocalStorage hydration issue:', e);
+      } finally {
+        if (isMounted) setIsHydrated(true);
       }
 
-      const savedPresets = localStorage.getItem(STORAGE_KEYS.CLAUSE_PRESETS);
-      if (savedPresets) {
-        setClausePresets(JSON.parse(savedPresets));
+      // 2. Connect to Cloud Firestore in the background
+      if (isFirebaseConfigured) {
+        try {
+          if (isMounted) setFirestoreStatus('syncing');
+
+          const [
+            fsSettings,
+            fsHotels,
+            fsUsers,
+            fsVehicles,
+            fsTemplates,
+            fsPresets,
+            fsLeads,
+            fsQuotes,
+          ] = await Promise.all([
+            getCompanySettingsFromFirestore(),
+            getHotelsFromFirestore(),
+            getAuthUsersFromFirestore(),
+            getVehiclesFromFirestore(),
+            getTripTemplatesFromFirestore(),
+            getClausePresetsFromFirestore(),
+            getLeadsFromFirestore(),
+            getQuotationsFromFirestore(),
+          ]);
+
+          // If database is completely empty (no settings and no hotels written yet), auto-seed!
+          const isFreshDatabase = !fsSettings && (!fsHotels || fsHotels.length === 0);
+
+          if (isFreshDatabase) {
+            console.log('⚡ Initializing & auto-seeding Cloud Firestore collections for Desi Journey...');
+            const seedRes = await syncAllMasterDataToFirestore({
+              companySettings: initialSettings,
+              authUsers: initialAuthUsers,
+              hotels: initialHotels,
+              vehicles: initialVehicles,
+              tripTemplates: initialTemplates,
+              clausePresets: initialPresets,
+              leads: initialLeadsList,
+              quotations: initialQuoteList,
+            });
+
+            if (isMounted) {
+              if (seedRes.success) {
+                setFirestoreStatus('connected');
+                setFirestoreError(null);
+              } else {
+                setFirestoreStatus('error');
+                setFirestoreError(seedRes.error || seedRes.message);
+              }
+            }
+          } else {
+            // Firestore already has documents: sync from Firestore into state
+            if (isMounted) {
+              if (fsSettings) setCompanySettings(fsSettings);
+              if (fsHotels && fsHotels.length > 0) setHotels(fsHotels);
+              if (fsUsers && fsUsers.length > 0) setAuthUsers(fsUsers);
+              if (fsVehicles && fsVehicles.length > 0) setVehicles(fsVehicles);
+              if (fsTemplates && fsTemplates.length > 0) setTripTemplates(fsTemplates);
+              if (fsPresets && fsPresets.length > 0) setClausePresets(fsPresets);
+              if (fsLeads && fsLeads.length > 0) setLeads(fsLeads);
+              if (fsQuotes && fsQuotes.length > 0) setQuotations(fsQuotes);
+              setFirestoreStatus('connected');
+              setFirestoreError(null);
+            }
+          }
+        } catch (err: any) {
+          console.warn('Firestore sync note:', err);
+          if (isMounted) {
+            setFirestoreStatus('error');
+            setFirestoreError(err.message || 'Firestore connection issue');
+          }
+        }
       }
+    };
 
-      const savedUser = localStorage.getItem(STORAGE_KEYS.LOGGED_IN_USER);
-      if (savedUser) {
-        setCurrentUser(JSON.parse(savedUser));
-      }
+    hydrateAppData();
 
-      const savedSettings = localStorage.getItem(STORAGE_KEYS.SETTINGS);
-      if (savedSettings) setCompanySettings(JSON.parse(savedSettings));
-
-      const savedLeads = localStorage.getItem(STORAGE_KEYS.LEADS);
-      if (savedLeads) setLeads(JSON.parse(savedLeads));
-
-      const savedHotels = localStorage.getItem(STORAGE_KEYS.HOTELS);
-      if (savedHotels) setHotels(JSON.parse(savedHotels));
-
-      const savedVehicles = localStorage.getItem(STORAGE_KEYS.VEHICLES);
-      if (savedVehicles) setVehicles(JSON.parse(savedVehicles));
-
-      const savedDestinations = localStorage.getItem(STORAGE_KEYS.DESTINATIONS);
-      if (savedDestinations) setDestinations(JSON.parse(savedDestinations));
-
-      const savedQuotations = localStorage.getItem(STORAGE_KEYS.QUOTATIONS);
-      if (savedQuotations) setQuotations(JSON.parse(savedQuotations));
-
-      const savedShares = localStorage.getItem(STORAGE_KEYS.SHARE_EVENTS);
-      if (savedShares) setShareEvents(JSON.parse(savedShares));
-
-      const savedSuppliers = localStorage.getItem(STORAGE_KEYS.SUPPLIERS);
-      if (savedSuppliers) setSuppliers(JSON.parse(savedSuppliers));
-
-      const savedSpayments = localStorage.getItem(STORAGE_KEYS.SUPPLIER_PAYMENTS);
-      if (savedSpayments) setSupplierPayments(JSON.parse(savedSpayments));
-
-      const savedCpayments = localStorage.getItem(STORAGE_KEYS.CUSTOMER_PAYMENTS);
-      if (savedCpayments) setCustomerPayments(JSON.parse(savedCpayments));
-
-      const savedRole = localStorage.getItem(STORAGE_KEYS.USER_ROLE) as UserRole | null;
-      if (savedRole) {
-        setCurrentUser((u) => (u ? { ...u, role: savedRole } : null));
-      }
-    } catch (e) {
-      console.warn('Failed to hydrate from localStorage, fallback to initial state', e);
-    } finally {
-      setIsHydrated(true);
-    }
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   // Save to LocalStorage whenever state updates
@@ -226,6 +380,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       localStorage.setItem(STORAGE_KEYS.HOTELS, JSON.stringify(hotels));
       localStorage.setItem(STORAGE_KEYS.VEHICLES, JSON.stringify(vehicles));
       localStorage.setItem(STORAGE_KEYS.DESTINATIONS, JSON.stringify(destinations));
+      localStorage.setItem(STORAGE_KEYS.TRIP_TEMPLATES, JSON.stringify(tripTemplates));
       localStorage.setItem(STORAGE_KEYS.QUOTATIONS, JSON.stringify(quotations));
       localStorage.setItem(STORAGE_KEYS.SHARE_EVENTS, JSON.stringify(shareEvents));
       localStorage.setItem(STORAGE_KEYS.SUPPLIERS, JSON.stringify(suppliers));
@@ -243,6 +398,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     hotels,
     vehicles,
     destinations,
+    tripTemplates,
     quotations,
     shareEvents,
     suppliers,
@@ -294,7 +450,69 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setCurrentUser(null);
     try {
       localStorage.removeItem(STORAGE_KEYS.LOGGED_IN_USER);
+      localStorage.removeItem(STORAGE_KEYS.USER_ROLE);
     } catch {}
+  };
+
+  const syncToFirestore = async () => {
+    setFirestoreStatus('syncing');
+    setFirestoreError(null);
+    const res = await syncAllMasterDataToFirestore({
+      companySettings,
+      authUsers,
+      hotels,
+      vehicles,
+      tripTemplates,
+      clausePresets,
+      leads,
+      quotations,
+    });
+    if (res.success) {
+      setFirestoreStatus('connected');
+    } else {
+      setFirestoreStatus('error');
+      setFirestoreError(res.error || res.message);
+    }
+    return res;
+  };
+
+  const refreshFromFirestore = async () => {
+    if (!isFirebaseConfigured) return;
+    setFirestoreStatus('syncing');
+    try {
+      const [
+        fsSettings,
+        fsHotels,
+        fsUsers,
+        fsVehicles,
+        fsTemplates,
+        fsPresets,
+        fsLeads,
+        fsQuotes,
+      ] = await Promise.all([
+        getCompanySettingsFromFirestore(),
+        getHotelsFromFirestore(),
+        getAuthUsersFromFirestore(),
+        getVehiclesFromFirestore(),
+        getTripTemplatesFromFirestore(),
+        getClausePresetsFromFirestore(),
+        getLeadsFromFirestore(),
+        getQuotationsFromFirestore(),
+      ]);
+      if (fsSettings) setCompanySettings(fsSettings);
+      if (fsHotels && fsHotels.length > 0) setHotels(fsHotels);
+      if (fsUsers && fsUsers.length > 0) setAuthUsers(fsUsers);
+      if (fsVehicles && fsVehicles.length > 0) setVehicles(fsVehicles);
+      if (fsTemplates && fsTemplates.length > 0) setTripTemplates(fsTemplates);
+      if (fsPresets && fsPresets.length > 0) setClausePresets(fsPresets);
+      if (fsLeads && fsLeads.length > 0) setLeads(fsLeads);
+      if (fsQuotes && fsQuotes.length > 0) setQuotations(fsQuotes);
+      setFirestoreStatus('connected');
+      setFirestoreError(null);
+    } catch (err: any) {
+      setFirestoreStatus('error');
+      setFirestoreError(err.message || 'Failed to refresh from Firestore');
+    }
   };
 
   const updateAuthUser = (id: string, updates: Partial<AuthUser>) => {
@@ -302,6 +520,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       prev.map((u) => {
         if (u.id === id) {
           const updated = { ...u, ...updates };
+          saveAuthUserToFirestore(updated).catch(console.error);
           if (currentUser && currentUser.id === id) {
             const newProfile: UserProfile = {
               id: updated.id,
@@ -330,11 +549,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       id: `user-${Date.now()}`,
     };
     setAuthUsers((prev) => [...prev, newUser]);
+    saveAuthUserToFirestore(newUser).catch(console.error);
     return newUser;
   };
 
   const deleteAuthUser = (id: string) => {
     setAuthUsers((prev) => prev.filter((u) => u.id !== id));
+    deleteAuthUserFromFirestore(id).catch(console.error);
   };
 
   const addClausePreset = (preset: Omit<TripClausePreset, 'id'>): TripClausePreset => {
@@ -343,15 +564,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       id: `preset-${Date.now()}`,
     };
     setClausePresets((prev) => [...prev, newPreset]);
+    saveClausePresetToFirestore(newPreset).catch(console.error);
     return newPreset;
   };
 
   const deleteClausePreset = (id: string) => {
     setClausePresets((prev) => prev.filter((p) => p.id !== id));
+    deleteClausePresetFromFirestore(id).catch(console.error);
   };
 
   const updateCompanySettings = (settings: Partial<CompanySettings>) => {
-    setCompanySettings((prev) => ({ ...prev, ...settings }));
+    setCompanySettings((prev) => {
+      const updated = { ...prev, ...settings };
+      saveCompanySettingsToFirestore(updated).catch(console.error);
+      return updated;
+    });
   };
 
   const addLead = (leadData: Omit<Lead, 'id' | 'createdAt' | 'updatedAt'>) => {
@@ -362,29 +589,40 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       updatedAt: new Date().toISOString(),
     };
     setLeads((prev) => [newLead, ...prev]);
+    saveLeadToFirestore(newLead).catch(console.error);
     return newLead;
   };
 
   const updateLead = (id: string, updates: Partial<Lead>) => {
     setLeads((prev) =>
-      prev.map((l) => (l.id === id ? { ...l, ...updates, updatedAt: new Date().toISOString() } : l))
+      prev.map((l) => {
+        if (l.id === id) {
+          const updated = { ...l, ...updates, updatedAt: new Date().toISOString() };
+          saveLeadToFirestore(updated).catch(console.error);
+          return updated;
+        }
+        return l;
+      })
     );
   };
 
   const deleteLead = (id: string) => {
     setLeads((prev) => prev.filter((l) => l.id !== id));
+    deleteLeadFromFirestore(id).catch(console.error);
   };
 
   const updateLeadStatus = (id: string, status: LeadStatus, note?: string) => {
     setLeads((prev) =>
       prev.map((l) => {
         if (l.id !== id) return l;
-        return {
+        const updated = {
           ...l,
           status,
           nextFollowUpNote: note || l.nextFollowUpNote,
           updatedAt: new Date().toISOString(),
         };
+        saveLeadToFirestore(updated).catch(console.error);
+        return updated;
       })
     );
   };
@@ -396,23 +634,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       updatedAt: new Date().toISOString(),
     };
     setHotels((prev) => [newHotel, ...prev]);
+    saveHotelToFirestore(newHotel).catch(console.error);
     return newHotel;
   };
 
   const updateHotel = (id: string, updates: Partial<Hotel>) => {
     setHotels((prev) =>
-      prev.map((h) => (h.id === id ? { ...h, ...updates, updatedAt: new Date().toISOString() } : h))
+      prev.map((h) => {
+        if (h.id === id) {
+          const updated = { ...h, ...updates, updatedAt: new Date().toISOString() };
+          saveHotelToFirestore(updated).catch(console.error);
+          return updated;
+        }
+        return h;
+      })
     );
   };
 
   const deleteHotel = (id: string) => {
     setHotels((prev) => prev.filter((h) => h.id !== id));
+    deleteHotelFromFirestore(id).catch(console.error);
   };
 
   const importHotelsCSV = (importedHotels: Hotel[]) => {
     setHotels((prev) => {
       const existingNames = new Set(prev.map((h) => h.name.toLowerCase()));
       const filtered = importedHotels.filter((h) => !existingNames.has(h.name.toLowerCase()));
+      for (const h of filtered) {
+        saveHotelToFirestore(h).catch(console.error);
+      }
       return [...filtered, ...prev];
     });
   };
@@ -423,15 +673,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       id: `veh-${Date.now()}`,
     };
     setVehicles((prev) => [newVehicle, ...prev]);
+    saveVehicleToFirestore(newVehicle).catch(console.error);
     return newVehicle;
   };
 
   const updateVehicle = (id: string, updates: Partial<Vehicle>) => {
-    setVehicles((prev) => prev.map((v) => (v.id === id ? { ...v, ...updates } : v)));
+    setVehicles((prev) =>
+      prev.map((v) => {
+        if (v.id === id) {
+          const updated = { ...v, ...updates };
+          saveVehicleToFirestore(updated).catch(console.error);
+          return updated;
+        }
+        return v;
+      })
+    );
   };
 
   const deleteVehicle = (id: string) => {
     setVehicles((prev) => prev.filter((v) => v.id !== id));
+    deleteVehicleFromFirestore(id).catch(console.error);
   };
 
   const addDestination = (dest: Destination) => {
@@ -482,6 +743,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
   };
 
+  const addTripTemplate = (templateData: Omit<TripTemplate, 'id'>): TripTemplate => {
+    const newTemplate: TripTemplate = {
+      ...templateData,
+      id: `tmpl-custom-${Date.now()}`,
+      isCustom: true,
+    };
+    setTripTemplates((prev) => [newTemplate, ...prev]);
+    saveTripTemplateToFirestore(newTemplate).catch(console.error);
+    return newTemplate;
+  };
+
+  const updateTripTemplate = (id: string, updates: Partial<TripTemplate>) => {
+    setTripTemplates((prev) =>
+      prev.map((t) => {
+        if (t.id === id) {
+          const updated = { ...t, ...updates };
+          saveTripTemplateToFirestore(updated).catch(console.error);
+          return updated;
+        }
+        return t;
+      })
+    );
+  };
+
+  const deleteTripTemplate = (id: string) => {
+    setTripTemplates((prev) => prev.filter((t) => t.id !== id));
+    deleteTripTemplateFromFirestore(id).catch(console.error);
+  };
+
   const getQuotationById = (id: string) => {
     return quotations.find((q) => q.id === id);
   };
@@ -499,12 +789,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       updatedAt: new Date().toISOString(),
     };
     setQuotations((prev) => [newQuote, ...prev]);
+    saveQuotationToFirestore(newQuote).catch(console.error);
     return newQuote;
   };
 
   const updateQuotation = (id: string, updates: Partial<Quotation>) => {
     setQuotations((prev) =>
-      prev.map((q) => (q.id === id ? { ...q, ...updates, updatedAt: new Date().toISOString() } : q))
+      prev.map((q) => {
+        if (q.id === id) {
+          const updated = { ...q, ...updates, updatedAt: new Date().toISOString() };
+          saveQuotationToFirestore(updated).catch(console.error);
+          return updated;
+        }
+        return q;
+      })
     );
   };
 
@@ -520,11 +818,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     setQuotations((prev) => [newVersion, ...prev]);
+    saveQuotationToFirestore(newVersion).catch(console.error);
     return newVersion;
   };
 
   const deleteQuotation = (id: string) => {
     setQuotations((prev) => prev.filter((q) => q.id !== id));
+    deleteQuotationFromFirestore(id).catch(console.error);
   };
 
   const recordShareEvent = (eventData: Omit<ShareEvent, 'id' | 'timestamp'>) => {
@@ -583,6 +883,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setHotels(sampleHotels);
     setVehicles(sampleVehicles);
     setDestinations(sampleDestinations);
+    setTripTemplates(sampleTripTemplates);
     setQuotations(sampleQuotations);
     setShareEvents([]);
     setSuppliers(sampleSuppliers);
@@ -628,6 +929,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateAttraction,
         deleteAttraction,
         tripTemplates,
+        addTripTemplate,
+        updateTripTemplate,
+        deleteTripTemplate,
         quotations,
         getQuotationById,
         createQuotation,
@@ -644,6 +948,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         resetDemoData,
         isSearchOpen,
         setIsSearchOpen,
+        isHydrated,
+        firestoreStatus,
+        firestoreError,
+        syncToFirestore,
+        refreshFromFirestore,
       }}
     >
       {children}
