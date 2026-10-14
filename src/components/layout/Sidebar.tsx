@@ -97,19 +97,23 @@ export const Sidebar: React.FC = () => {
   return (
     <aside className="no-print w-64 min-h-screen bg-forest-900 text-stone-100 flex flex-col border-r border-forest-800/40 select-none flex-shrink-0 z-30">
       {/* Brand Header */}
-      <div className="p-5 border-b border-forest-800/60 flex items-center justify-between">
+      <div className="p-4 border-b border-forest-800/60 flex items-center justify-between">
         <Link href="/" className="flex items-center gap-3 group">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-gold-500 to-forest-600 flex items-center justify-center shadow-lg shadow-gold-500/20 group-hover:scale-105 transition-transform">
-            <Compass className="w-6 h-6 text-white stroke-[2.2]" />
+          <div className="w-10 h-10 rounded-xl bg-white p-1 flex items-center justify-center shadow-lg shadow-forest-950/40 group-hover:scale-105 transition-transform overflow-hidden">
+            <img
+              src="/images/desi-journey-logo.png"
+              alt="Desi Journey"
+              className="w-full h-full object-contain"
+            />
           </div>
           <div>
             <div className="flex items-center gap-1.5">
-              <span className="font-bold text-base tracking-tight text-white">Desi Journey</span>
-              <span className="text-[10px] uppercase tracking-wider font-semibold px-1.5 py-0.5 rounded bg-gold-500/20 text-gold-400 border border-gold-500/30">
+              <span className="font-bold text-sm tracking-tight text-white">Desi Journey</span>
+              <span className="text-[9px] uppercase tracking-wider font-semibold px-1.5 py-0.5 rounded bg-gold-500/20 text-gold-400 border border-gold-500/30">
                 Studio
               </span>
             </div>
-            <p className="text-[11px] text-stone-400 font-medium">Bespoke Travel OS</p>
+            <p className="text-[10px] text-stone-400 font-medium">Bespoke Travel OS</p>
           </div>
         </Link>
       </div>

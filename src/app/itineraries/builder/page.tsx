@@ -34,6 +34,9 @@ import {
   Wand2,
   RefreshCw,
   X,
+  FileText,
+  Layers,
+  Bookmark,
 } from 'lucide-react';
 import { useApp } from '../../../context/AppContext';
 import {
@@ -74,6 +77,8 @@ function ItineraryBuilderContent() {
     createQuotation,
     updateQuotation,
     recordShareEvent,
+    clausePresets,
+    addClausePreset,
   } = useApp();
 
   // Wizard Step: 1 to 8
@@ -147,6 +152,53 @@ function ItineraryBuilderContent() {
   const [inclusions, setInclusions] = useState<string[]>(companySettings.defaultInclusions);
   const [exclusions, setExclusions] = useState<string[]>(companySettings.defaultExclusions);
   const [terms, setTerms] = useState<string[]>(companySettings.defaultTerms);
+
+  // Preset rules state
+  const [selectedPresetId, setSelectedPresetId] = useState<string>('preset-himachal');
+  const [presetApplyMode, setPresetApplyMode] = useState<'replace' | 'append'>('replace');
+  const [showSavePresetModal, setShowSavePresetModal] = useState<boolean>(false);
+  const [newPresetTitle, setNewPresetTitle] = useState<string>('');
+  const [newPresetDesc, setNewPresetDesc] = useState<string>('');
+  const [newPresetCategory, setNewPresetCategory] = useState<string>('Custom Trip');
+  const [clauseFeedbackMsg, setClauseFeedbackMsg] = useState<string | null>(null);
+
+  const handleApplyPreset = () => {
+    const preset = clausePresets.find((p) => p.id === selectedPresetId);
+    if (!preset) return;
+    if (presetApplyMode === 'replace') {
+      setInclusions([...preset.inclusions]);
+      setExclusions([...preset.exclusions]);
+      setTerms([...preset.termsAndConditions]);
+      setClauseFeedbackMsg(`Applied "${preset.title}" rules (replaced previous clauses).`);
+    } else {
+      setInclusions((prev) => Array.from(new Set([...prev, ...preset.inclusions])));
+      setExclusions((prev) => Array.from(new Set([...prev, ...preset.exclusions])));
+      setTerms((prev) => Array.from(new Set([...prev, ...preset.termsAndConditions])));
+      setClauseFeedbackMsg(`Appended "${preset.title}" rules to current clauses.`);
+    }
+    setTimeout(() => setClauseFeedbackMsg(null), 3000);
+  };
+
+  const handleSaveCurrentAsPreset = () => {
+    if (!newPresetTitle.trim()) {
+      alert('Please enter a title for the rule preset.');
+      return;
+    }
+    addClausePreset({
+      title: newPresetTitle.trim(),
+      description: newPresetDesc.trim() || 'Custom trip policy rules saved from itinerary builder.',
+      category: newPresetCategory.trim() || 'Custom',
+      inclusions: [...inclusions],
+      exclusions: [...exclusions],
+      termsAndConditions: [...terms],
+      isBuiltIn: false,
+    });
+    setShowSavePresetModal(false);
+    setNewPresetTitle('');
+    setNewPresetDesc('');
+    setClauseFeedbackMsg(`Saved "${newPresetTitle}" as a reusable custom trip rule preset!`);
+    setTimeout(() => setClauseFeedbackMsg(null), 3500);
+  };
 
   // Customer Customization Settings
   const [customization, setCustomization] = useState<QuotationCustomization>({
@@ -1631,21 +1683,121 @@ function ItineraryBuilderContent() {
 
           {/* STEP 7: Inclusions, Exclusions & Terms */}
           {currentStep === 7 && (
-            <div className="bg-white p-6 rounded-2xl border border-stone-200 shadow-card space-y-5 text-xs">
-              <div className="pb-3 border-b border-stone-100">
-                <h2 className="text-sm font-bold text-forest-900">Step 7: Inclusions, Exclusions & Payment Terms</h2>
-                <p className="text-[11px] text-stone-500">
-                  Refine the exact contractual inclusions and cancellation clauses displayed on the customer quotation.
-                </p>
+            <div className="bg-white p-6 rounded-2xl border border-stone-200 shadow-card space-y-6 text-xs">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-stone-100">
+                <div>
+                  <h2 className="text-sm font-bold text-forest-900">
+                    Step 7: Inclusions, Exclusions, Terms & Ready-Made Policy Presets
+                  </h2>
+                  <p className="text-[11px] text-stone-500">
+                    Apply standardized Indian regional trip rules (Himachal, Kashmir, Ladakh, Rajasthan, Extreme Weather, MICE) or customize and save as trip rule presets.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowSavePresetModal(true)}
+                  className="px-3 py-1.5 rounded-lg border border-forest-700 text-forest-800 hover:bg-forest-50 font-semibold flex items-center gap-1.5 text-xs transition-colors shrink-0"
+                >
+                  <Bookmark className="w-3.5 h-3.5 text-forest-600" />
+                  <span>Save as Trip Rule Preset</span>
+                </button>
+              </div>
+
+              {/* Ready-Made Preset Selector Banner */}
+              <div className="p-4 bg-gradient-to-r from-amber-50/70 via-stone-50 to-forest-50/50 rounded-xl border border-amber-200/80 space-y-3">
+                <div className="flex items-center gap-2">
+                  <Layers className="w-4 h-4 text-amber-700" />
+                  <span className="font-bold text-forest-900 text-xs">
+                    Ready-Made Regional Rule Presets & Circuit Templates
+                  </span>
+                  <span className="text-[10px] bg-amber-200/80 text-amber-900 font-bold px-2 py-0.5 rounded-full">
+                    {clausePresets.length} Presets Available
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-center">
+                  <div className="sm:col-span-6">
+                    <select
+                      value={selectedPresetId}
+                      onChange={(e) => setSelectedPresetId(e.target.value)}
+                      className="w-full px-3 py-2 rounded-lg border border-stone-300 bg-white font-medium text-xs focus:border-forest-600 outline-hidden"
+                    >
+                      {clausePresets.map((preset) => (
+                        <option key={preset.id} value={preset.id}>
+                          [{preset.category}] {preset.title}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="sm:col-span-3 flex items-center gap-2 text-[11px] font-medium text-stone-700">
+                    <label className="flex items-center gap-1 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="presetMode"
+                        checked={presetApplyMode === 'replace'}
+                        onChange={() => setPresetApplyMode('replace')}
+                        className="text-forest-700 focus:ring-forest-600"
+                      />
+                      <span>Replace All</span>
+                    </label>
+                    <label className="flex items-center gap-1 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="presetMode"
+                        checked={presetApplyMode === 'append'}
+                        onChange={() => setPresetApplyMode('append')}
+                        className="text-forest-700 focus:ring-forest-600"
+                      />
+                      <span>Append</span>
+                    </label>
+                  </div>
+
+                  <div className="sm:col-span-3">
+                    <button
+                      type="button"
+                      onClick={handleApplyPreset}
+                      className="w-full px-3 py-2 rounded-lg bg-forest-800 hover:bg-forest-700 text-white font-semibold text-xs flex items-center justify-center gap-1.5 shadow-2xs transition-colors"
+                    >
+                      <Sparkles className="w-3.5 h-3.5 text-gold-400" />
+                      <span>Insert Preset Rules</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Selected Preset Details Note */}
+                {(() => {
+                  const currentPreset = clausePresets.find((p) => p.id === selectedPresetId);
+                  return currentPreset ? (
+                    <p className="text-[11px] text-stone-600 bg-white/70 p-2 rounded-lg border border-stone-200/60 leading-relaxed">
+                      <strong className="text-forest-900 font-semibold">{currentPreset.title}:</strong>{' '}
+                      {currentPreset.description} ({currentPreset.inclusions.length} Inclusions,{' '}
+                      {currentPreset.exclusions.length} Exclusions, {currentPreset.termsAndConditions.length} T&C Clauses)
+                    </p>
+                  ) : null;
+                })()}
+
+                {clauseFeedbackMsg && (
+                  <div className="p-2.5 bg-emerald-100 border border-emerald-300 rounded-lg text-emerald-900 text-xs font-semibold flex items-center gap-2 animate-in fade-in duration-150">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-700 shrink-0" />
+                    <span>{clauseFeedbackMsg}</span>
+                  </div>
+                )}
               </div>
 
               {/* Inclusions */}
               <div>
-                <label className="font-bold text-forest-900 block mb-2">Package Inclusions Checklist</label>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="font-bold text-forest-900 flex items-center gap-1.5">
+                    <span className="w-4 h-4 rounded-full bg-emerald-100 text-emerald-800 flex items-center justify-center text-[10px] font-bold">✓</span>
+                    <span>Package Inclusions ({inclusions.length})</span>
+                  </label>
+                  <span className="text-[10px] text-stone-400">Printed with green checkmarks on proposal</span>
+                </div>
                 <div className="space-y-1.5">
                   {inclusions.map((inc, i) => (
-                    <div key={i} className="flex items-center gap-2">
-                      <span className="text-emerald-600 font-bold">✓</span>
+                    <div key={i} className="flex items-center gap-2 group">
+                      <span className="text-emerald-600 font-bold w-4 text-center">✓</span>
                       <input
                         type="text"
                         value={inc}
@@ -1654,32 +1806,42 @@ function ItineraryBuilderContent() {
                           updated[i] = e.target.value;
                           setInclusions(updated);
                         }}
-                        className="flex-1 px-2.5 py-1 rounded border border-stone-200 text-xs"
+                        className="flex-1 px-2.5 py-1.5 rounded-lg border border-stone-200 text-xs focus:border-forest-600 bg-stone-50/50 focus:bg-white"
                       />
                       <button
+                        type="button"
                         onClick={() => setInclusions(inclusions.filter((_, idx) => idx !== i))}
-                        className="text-stone-400 hover:text-rose-600 p-1"
+                        className="text-stone-400 hover:text-rose-600 p-1 rounded hover:bg-rose-50 transition-colors"
+                        title="Remove inclusion"
                       >
                         ×
                       </button>
                     </div>
                   ))}
                   <button
+                    type="button"
                     onClick={() => setInclusions([...inclusions, 'Special customized inclusion clause'])}
-                    className="text-[11px] font-semibold text-emerald-700 hover:underline mt-1"
+                    className="text-[11px] font-semibold text-emerald-700 hover:underline mt-1.5 flex items-center gap-1"
                   >
-                    + Add Inclusion Clause
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Add Inclusion Clause</span>
                   </button>
                 </div>
               </div>
 
               {/* Exclusions */}
-              <div className="pt-3 border-t border-stone-100">
-                <label className="font-bold text-forest-900 block mb-2">Package Exclusions</label>
+              <div className="pt-4 border-t border-stone-100">
+                <div className="flex items-center justify-between mb-2">
+                  <label className="font-bold text-forest-900 flex items-center gap-1.5">
+                    <span className="w-4 h-4 rounded-full bg-rose-100 text-rose-800 flex items-center justify-center text-[10px] font-bold">✕</span>
+                    <span>Package Exclusions ({exclusions.length})</span>
+                  </label>
+                  <span className="text-[10px] text-stone-400">Printed with red cross marks on proposal</span>
+                </div>
                 <div className="space-y-1.5">
                   {exclusions.map((exc, i) => (
-                    <div key={i} className="flex items-center gap-2">
-                      <span className="text-rose-600 font-bold">✕</span>
+                    <div key={i} className="flex items-center gap-2 group">
+                      <span className="text-rose-600 font-bold w-4 text-center">✕</span>
                       <input
                         type="text"
                         value={exc}
@@ -1688,21 +1850,69 @@ function ItineraryBuilderContent() {
                           updated[i] = e.target.value;
                           setExclusions(updated);
                         }}
-                        className="flex-1 px-2.5 py-1 rounded border border-stone-200 text-xs"
+                        className="flex-1 px-2.5 py-1.5 rounded-lg border border-stone-200 text-xs focus:border-forest-600 bg-stone-50/50 focus:bg-white"
                       />
                       <button
+                        type="button"
                         onClick={() => setExclusions(exclusions.filter((_, idx) => idx !== i))}
-                        className="text-stone-400 hover:text-rose-600 p-1"
+                        className="text-stone-400 hover:text-rose-600 p-1 rounded hover:bg-rose-50 transition-colors"
+                        title="Remove exclusion"
                       >
                         ×
                       </button>
                     </div>
                   ))}
                   <button
-                    onClick={() => setExclusions([...exclusions, 'Personal adventure gear and union taxi fares'])}
-                    className="text-[11px] font-semibold text-emerald-700 hover:underline mt-1"
+                    type="button"
+                    onClick={() => setExclusions([...exclusions, 'Personal adventure gear, tipping, and union taxi fares'])}
+                    className="text-[11px] font-semibold text-rose-700 hover:underline mt-1.5 flex items-center gap-1"
                   >
-                    + Add Exclusion Clause
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Add Exclusion Clause</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Terms & Conditions and Payment Policies */}
+              <div className="pt-4 border-t border-stone-100">
+                <div className="flex items-center justify-between mb-2">
+                  <label className="font-bold text-forest-900 flex items-center gap-1.5">
+                    <span className="w-4 h-4 rounded-full bg-amber-100 text-amber-900 flex items-center justify-center text-[10px] font-bold">§</span>
+                    <span>Terms & Conditions, Cancellation & Payment Policies ({terms.length})</span>
+                  </label>
+                  <span className="text-[10px] text-stone-400">Legal trip policies displayed on final proposal & PDF</span>
+                </div>
+                <div className="space-y-2">
+                  {terms.map((term, i) => (
+                    <div key={i} className="flex items-start gap-2 group">
+                      <span className="text-amber-700 font-bold w-4 text-center mt-1.5">§</span>
+                      <textarea
+                        rows={2}
+                        value={term}
+                        onChange={(e) => {
+                          const updated = [...terms];
+                          updated[i] = e.target.value;
+                          setTerms(updated);
+                        }}
+                        className="flex-1 px-2.5 py-1.5 rounded-lg border border-stone-200 text-xs focus:border-forest-600 bg-stone-50/50 focus:bg-white leading-relaxed resize-y"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setTerms(terms.filter((_, idx) => idx !== i))}
+                        className="text-stone-400 hover:text-rose-600 p-1 rounded hover:bg-rose-50 transition-colors mt-1"
+                        title="Remove term"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setTerms([...terms, 'Any unutilized services due to natural closures are non-refundable.'])}
+                    className="text-[11px] font-semibold text-amber-800 hover:underline mt-1.5 flex items-center gap-1"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Add Terms & Conditions Clause</span>
                   </button>
                 </div>
               </div>
@@ -2281,6 +2491,95 @@ function ItineraryBuilderContent() {
                   </button>
                 )}
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Save Custom Trip Rule Preset Modal */}
+      {showSavePresetModal && (
+        <div className="fixed inset-0 bg-forest-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-stone-200 animate-in zoom-in-95 duration-150 text-xs">
+            <div className="flex items-center justify-between pb-3 border-b border-stone-100 mb-4">
+              <div className="flex items-center gap-2">
+                <Bookmark className="w-4 h-4 text-forest-700" />
+                <h3 className="text-sm font-bold text-forest-900">
+                  Save as Custom Trip Rule Template
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowSavePresetModal(false)}
+                className="p-1 text-stone-400 hover:text-stone-600 rounded-lg"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-stone-600 mb-4 leading-relaxed">
+              Save the current set of <strong className="text-forest-900">{inclusions.length} Inclusions</strong>,{' '}
+              <strong className="text-forest-900">{exclusions.length} Exclusions</strong>, and{' '}
+              <strong className="text-forest-900">{terms.length} Terms & Policies</strong> as a reusable preset template for future itineraries.
+            </p>
+
+            <div className="space-y-3">
+              <div>
+                <label className="font-semibold text-stone-700 block mb-1">
+                  Preset Title *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={newPresetTitle}
+                  onChange={(e) => setNewPresetTitle(e.target.value)}
+                  placeholder="e.g. Manali Honeymoon Luxury Rules"
+                  className="w-full px-3 py-2 rounded-lg border border-stone-200 font-medium"
+                />
+              </div>
+
+              <div>
+                <label className="font-semibold text-stone-700 block mb-1">
+                  Circuit / Region Category
+                </label>
+                <input
+                  type="text"
+                  value={newPresetCategory}
+                  onChange={(e) => setNewPresetCategory(e.target.value)}
+                  placeholder="e.g. Himachal / Honeymoon"
+                  className="w-full px-3 py-2 rounded-lg border border-stone-200 font-medium"
+                />
+              </div>
+
+              <div>
+                <label className="font-semibold text-stone-700 block mb-1">
+                  Description / Application Context
+                </label>
+                <textarea
+                  rows={2}
+                  value={newPresetDesc}
+                  onChange={(e) => setNewPresetDesc(e.target.value)}
+                  placeholder="e.g. Special clauses for high-altitude passes, union taxi policy, and couple candlelight dinner inclusions."
+                  className="w-full px-3 py-2 rounded-lg border border-stone-200 font-medium leading-relaxed"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 mt-5 pt-3 border-t border-stone-100">
+              <button
+                type="button"
+                onClick={() => setShowSavePresetModal(false)}
+                className="px-4 py-2 rounded-lg border border-stone-200 text-stone-700 hover:bg-stone-50 font-medium"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveCurrentAsPreset}
+                className="px-4 py-2 rounded-lg bg-forest-800 hover:bg-forest-700 text-white font-semibold flex items-center gap-1.5 shadow-xs"
+              >
+                <Save className="w-3.5 h-3.5" />
+                <span>Save Preset Template</span>
+              </button>
             </div>
           </div>
         </div>

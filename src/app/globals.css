@@ -78,16 +78,28 @@
     border: none !important;
   }
 
-  /* Prevent page breaks inside cards */
-  .page-break-inside-avoid {
-    break-inside: avoid;
-    page-break-inside: avoid;
+  /* Page setup for clean A4 printing */
+  @page {
+    size: A4;
+    margin: 12mm 14mm 14mm 14mm;
   }
 
-  /* Force page break before major section if needed */
+  /* Prevent page breaks inside cards */
+  .page-break-inside-avoid {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  /* Force page break before section */
   .page-break-before {
-    break-before: page;
-    page-break-before: always;
+    break-before: page !important;
+    page-break-before: always !important;
+  }
+
+  /* Force page break after section so each individual block ends on its own page */
+  .page-break-after {
+    break-after: page !important;
+    page-break-after: always !important;
   }
 
   a[href]:after {

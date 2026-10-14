@@ -14,8 +14,11 @@ export async function POST(req: NextRequest) {
       isTestPing = false,
     } = body;
 
-    const apiKey = clientApiKey || process.env.GEMINI_API_KEY;
-    const preferredModel = clientModel || process.env.GEMINI_MODEL || 'gemini-1.5-flash';
+    const apiKey = clientApiKey || process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+    let preferredModel = clientModel || process.env.GEMINI_MODEL || 'gemini-1.5-flash';
+    if (preferredModel.includes('3.5')) {
+      preferredModel = 'gemini-1.5-flash';
+    }
 
     // If Gemini API Key is provided, call Google Generative Language API
     if (apiKey && apiKey.trim().length > 10) {

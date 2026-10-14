@@ -255,85 +255,98 @@ export default function QuotationCustomerPreviewPage() {
           Clean page breaks, Alpine Premium design system, zero typography clipping
           =================================================================== */}
       <div className="print-container bg-white rounded-3xl border border-stone-200 shadow-elevated p-8 md:p-12 max-w-4xl mx-auto space-y-8">
-        {/* Document Header & Desi Journey Branding */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6 pb-6 border-b-2 border-forest-800">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-xl bg-forest-800 flex items-center justify-center text-white">
-                <Compass className="w-5 h-5 text-gold-400 stroke-[2.2]" />
+        {/* ===================================================================
+            BLOCK 1: COVER PAGE & EXECUTIVE SUMMARY (Ends on Page 1)
+            =================================================================== */}
+        <div className="page-break-after space-y-6 pb-6">
+          {/* Document Header & Desi Journey Branding */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6 pb-6 border-b-2 border-forest-800">
+            <div className="space-y-1">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-xl bg-white p-1 border border-stone-200 flex items-center justify-center shadow-xs overflow-hidden shrink-0">
+                  <img
+                    src={companySettings.logoUrl || '/images/desi-journey-logo.png'}
+                    alt={companySettings.agencyName}
+                    className="max-h-full max-w-full object-contain"
+                  />
+                </div>
+                <div>
+                  <span className="text-xl font-bold text-forest-900 tracking-tight block">
+                    {companySettings.agencyName}
+                  </span>
+                  <p className="text-xs text-stone-500 font-medium">
+                    {companySettings.tagline}
+                  </p>
+                </div>
               </div>
-              <span className="text-xl font-bold text-forest-900 tracking-tight">
-                {companySettings.agencyName}
-              </span>
+              <p className="text-[10px] text-stone-400 mt-1">
+                GSTIN: {companySettings.gstin} • Head Office: {companySettings.headOfficeAddress} • Website: {companySettings.website || 'desijourney.com'}
+              </p>
             </div>
-            <p className="text-xs text-stone-500 font-medium">
-              {companySettings.tagline}
-            </p>
-            <p className="text-[10px] text-stone-400">
-              GSTIN: {companySettings.gstin} • Head Office: {companySettings.headOfficeAddress}
-            </p>
+
+            <div className="text-left sm:text-right text-xs text-stone-600 space-y-0.5">
+              <div className="font-mono font-bold text-forest-900 text-sm">
+                Proposal #{sanitizedQuote.quoteNumber}
+              </div>
+              <div>Date Issued: {formatIndianDate(sanitizedQuote.createdAt)}</div>
+              <div className="font-medium text-emerald-800">Direct Helpline: {companySettings.phone}</div>
+              <div className="text-[11px] text-stone-500">{companySettings.email}</div>
+            </div>
           </div>
 
-          <div className="text-left sm:text-right text-xs text-stone-600 space-y-0.5">
-            <div className="font-mono font-bold text-forest-900 text-sm">
-              Proposal #{sanitizedQuote.quoteNumber}
-            </div>
-            <div>Date Issued: {formatIndianDate(sanitizedQuote.createdAt)}</div>
-            <div className="font-medium text-emerald-800">Phone: {companySettings.phone}</div>
-            <div className="text-[11px] text-stone-500">{companySettings.email}</div>
-          </div>
-        </div>
+          {/* Hero Title & Route Ribbon */}
+          <div className="bg-gradient-to-br from-forest-900 to-forest-800 text-white rounded-2xl p-6 sm:p-8 shadow-card">
+            <span className="text-[10px] uppercase font-bold tracking-widest text-gold-400 px-2 py-0.5 rounded bg-forest-950/60 inline-block mb-2">
+              Personalized Travel Itinerary & Quote
+            </span>
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-white">
+              {sanitizedQuote.tripTitle}
+            </h1>
 
-        {/* Hero Title & Route Ribbon */}
-        <div className="bg-gradient-to-br from-forest-900 to-forest-800 text-white rounded-2xl p-6 sm:p-8 shadow-card">
-          <span className="text-[10px] uppercase font-bold tracking-widest text-gold-400 px-2 py-0.5 rounded bg-forest-950/60 inline-block mb-2">
-            Personalized Travel Itinerary & Quote
-          </span>
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-white">
-            {sanitizedQuote.tripTitle}
-          </h1>
+            <div className="mt-3 flex items-center gap-2 text-stone-300 text-xs font-medium flex-wrap">
+              <MapPin className="w-3.5 h-3.5 text-gold-400 flex-shrink-0" />
+              <span>Route: {sanitizedQuote.destinationsSummary}</span>
+            </div>
 
-          <div className="mt-3 flex items-center gap-2 text-stone-300 text-xs font-medium flex-wrap">
-            <MapPin className="w-3.5 h-3.5 text-gold-400 flex-shrink-0" />
-            <span>Route: {sanitizedQuote.destinationsSummary}</span>
-          </div>
-
-          {/* Highlights Grid */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-6 pt-6 border-t border-forest-700/60 text-xs">
-            <div>
-              <span className="text-stone-300 text-[11px] block">Prepared For:</span>
-              <strong className="text-white text-sm">{sanitizedQuote.guestName}</strong>
-            </div>
-            <div>
-              <span className="text-stone-300 text-[11px] block">Travel Period:</span>
-              <strong className="text-white text-sm">
-                {formatIndianDate(sanitizedQuote.startDate)} → {formatIndianDate(sanitizedQuote.endDate)}
-              </strong>
-              <span className="text-[10px] text-gold-400 block font-semibold">
-                {sanitizedQuote.durationNights} Nights / {sanitizedQuote.durationDays} Days
-              </span>
-            </div>
-            <div>
-              <span className="text-stone-300 text-[11px] block">Travellers:</span>
-              <strong className="text-white text-sm">
-                {sanitizedQuote.adults} Adults {sanitizedQuote.children > 0 ? `+ ${sanitizedQuote.children} Chd` : ''}
-              </strong>
-            </div>
-            <div>
-              <span className="text-stone-300 text-[11px] block">Dedicated Transport:</span>
-              <strong className="text-white text-sm">{sanitizedQuote.vehicleName}</strong>
+            {/* Highlights Grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-6 pt-6 border-t border-forest-700/60 text-xs">
+              <div>
+                <span className="text-stone-300 text-[11px] block">Prepared For:</span>
+                <strong className="text-white text-sm">{sanitizedQuote.guestName}</strong>
+              </div>
+              <div>
+                <span className="text-stone-300 text-[11px] block">Travel Period:</span>
+                <strong className="text-white text-sm">
+                  {formatIndianDate(sanitizedQuote.startDate)} → {formatIndianDate(sanitizedQuote.endDate)}
+                </strong>
+                <span className="text-[10px] text-gold-400 block font-semibold">
+                  {sanitizedQuote.durationNights} Nights / {sanitizedQuote.durationDays} Days
+                </span>
+              </div>
+              <div>
+                <span className="text-stone-300 text-[11px] block">Travellers:</span>
+                <strong className="text-white text-sm">
+                  {sanitizedQuote.adults} Adults {sanitizedQuote.children > 0 ? `+ ${sanitizedQuote.children} Chd` : ''}
+                </strong>
+              </div>
+              <div>
+                <span className="text-stone-300 text-[11px] block">Dedicated Transport:</span>
+                <strong className="text-white text-sm">{sanitizedQuote.vehicleName}</strong>
+              </div>
             </div>
           </div>
         </div>
 
-        {/* Day-by-Day Rich Presentation */}
-        <div className="space-y-6">
+        {/* ===================================================================
+            BLOCK 2: DAY-BY-DAY CURATED ITINERARY (Ends cleanly on its page)
+            =================================================================== */}
+        <div className="page-break-after space-y-6 pb-6">
           <div className="flex items-center justify-between pb-2 border-b border-stone-200">
-            <h2 className="text-base font-bold text-forest-900 tracking-tight uppercase tracking-wider text-xs">
+            <h2 className="text-base font-bold text-forest-900 uppercase tracking-wider text-xs">
               Day-by-Day Curated Itinerary
             </h2>
             <span className="text-[11px] text-stone-500 font-medium">
-              {sanitizedQuote.days.length} Days Planned
+              {sanitizedQuote.days.length} Days Planned • Verified Route Circuit
             </span>
           </div>
 
@@ -421,45 +434,58 @@ export default function QuotationCustomerPreviewPage() {
           </div>
         </div>
 
-        {/* Inclusions & Exclusions */}
-        <div className="page-break-inside-avoid grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-stone-200 text-xs">
-          {/* Inclusions */}
-          <div className="bg-stone-50 p-5 rounded-2xl border border-stone-200 space-y-2.5">
-            <div className="font-bold text-forest-900 text-xs uppercase tracking-wider flex items-center gap-1.5">
-              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-              <span>Package Inclusions</span>
-            </div>
-            <ul className="space-y-1.5 text-stone-700 text-[11px] leading-relaxed">
-              {sanitizedQuote.inclusions.map((inc, i) => (
-                <li key={i} className="flex items-start gap-2">
-                  <span className="text-emerald-600 font-bold mt-0.5">✓</span>
-                  <span>{inc}</span>
-                </li>
-              ))}
-            </ul>
+        {/* ===================================================================
+            BLOCK 3: PACKAGE INCLUSIONS & EXCLUSIONS (Ends cleanly on its page)
+            =================================================================== */}
+        <div className="page-break-after page-break-inside-avoid space-y-4 pb-6">
+          <div className="flex items-center justify-between pb-2 border-b border-stone-200">
+            <h2 className="text-base font-bold text-forest-900 uppercase tracking-wider text-xs">
+              Contractual Scope: Inclusions & Exclusions
+            </h2>
+            <span className="text-[11px] text-stone-500">Trip Policy Specifications</span>
           </div>
 
-          {/* Exclusions */}
-          <div className="bg-stone-50 p-5 rounded-2xl border border-stone-200 space-y-2.5">
-            <div className="font-bold text-forest-900 text-xs uppercase tracking-wider flex items-center gap-1.5">
-              <span className="w-4 h-4 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center font-bold text-[10px]">
-                ✕
-              </span>
-              <span>Package Exclusions</span>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-xs">
+            {/* Inclusions */}
+            <div className="bg-stone-50 p-5 rounded-2xl border border-stone-200 space-y-2.5">
+              <div className="font-bold text-forest-900 text-xs uppercase tracking-wider flex items-center gap-1.5">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                <span>Package Inclusions</span>
+              </div>
+              <ul className="space-y-1.5 text-stone-700 text-[11px] leading-relaxed">
+                {sanitizedQuote.inclusions.map((inc, i) => (
+                  <li key={i} className="flex items-start gap-2">
+                    <span className="text-emerald-600 font-bold mt-0.5">✓</span>
+                    <span>{inc}</span>
+                  </li>
+                ))}
+              </ul>
             </div>
-            <ul className="space-y-1.5 text-stone-700 text-[11px] leading-relaxed">
-              {sanitizedQuote.exclusions.map((exc, i) => (
-                <li key={i} className="flex items-start gap-2">
-                  <span className="text-rose-500 font-bold mt-0.5">✕</span>
-                  <span>{exc}</span>
-                </li>
-              ))}
-            </ul>
+
+            {/* Exclusions */}
+            <div className="bg-stone-50 p-5 rounded-2xl border border-stone-200 space-y-2.5">
+              <div className="font-bold text-forest-900 text-xs uppercase tracking-wider flex items-center gap-1.5">
+                <span className="w-4 h-4 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center font-bold text-[10px]">
+                  ✕
+                </span>
+                <span>Package Exclusions</span>
+              </div>
+              <ul className="space-y-1.5 text-stone-700 text-[11px] leading-relaxed">
+                {sanitizedQuote.exclusions.map((exc, i) => (
+                  <li key={i} className="flex items-start gap-2">
+                    <span className="text-rose-500 font-bold mt-0.5">✕</span>
+                    <span>{exc}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
           </div>
         </div>
 
-        {/* Pricing Summary & Advance Terms Box */}
-        <div className="page-break-inside-avoid bg-forest-900 text-white rounded-2xl p-6 sm:p-8 space-y-6 shadow-elevated">
+        {/* ===================================================================
+            BLOCK 4: PRICING & PAYMENT SCHEDULE (Ends cleanly on its page)
+            =================================================================== */}
+        <div className="page-break-after page-break-inside-avoid bg-forest-900 text-white rounded-2xl p-6 sm:p-8 space-y-6 shadow-elevated">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pb-6 border-b border-forest-800">
             <div>
               <span className="text-[11px] text-stone-300 block">Total Tour Investment</span>
@@ -532,22 +558,53 @@ export default function QuotationCustomerPreviewPage() {
           </div>
         </div>
 
-        {/* Terms & Conditions */}
-        <div className="page-break-inside-avoid space-y-3 pt-4 border-t border-stone-200 text-xs text-stone-600">
-          <h4 className="font-bold text-forest-900 text-xs uppercase tracking-wider">
-            Terms, Conditions & Cancellation Policy
-          </h4>
-          <ul className="space-y-1.5 list-disc list-inside text-[11px] leading-relaxed">
-            {sanitizedQuote.termsAndConditions.map((t, idx) => (
-              <li key={idx}>{t}</li>
-            ))}
-          </ul>
-        </div>
+        {/* ===================================================================
+            BLOCK 5: TERMS, CONDITIONS & GUEST SIGN-OFF (Ends cleanly on final page)
+            =================================================================== */}
+        <div className="page-break-inside-avoid space-y-6 pt-2 text-xs text-stone-600">
+          <div className="space-y-3">
+            <h4 className="font-bold text-forest-900 text-xs uppercase tracking-wider">
+              Terms, Conditions & Cancellation Policy
+            </h4>
+            <ul className="space-y-1.5 list-disc list-inside text-[11px] leading-relaxed">
+              {sanitizedQuote.termsAndConditions.map((t, idx) => (
+                <li key={idx}>{t}</li>
+              ))}
+            </ul>
+          </div>
 
-        {/* Footer */}
-        <div className="pt-6 border-t border-stone-200 text-center text-[11px] text-stone-400">
-          <p>© {new Date().getFullYear()} Desi Journey Studio • Curated with pride in India for {sanitizedQuote.guestName}.</p>
-          <p className="mt-1">For modifications, contact your personal trip concierge: {companySettings.phone} • {companySettings.email}</p>
+          {/* Acceptance & Authorized Signatory Block */}
+          <div className="pt-6 border-t border-stone-200 grid grid-cols-1 sm:grid-cols-2 gap-6 text-[11px] text-stone-600">
+            <div className="border border-stone-200 rounded-xl p-4 bg-stone-50 space-y-2">
+              <div className="font-bold text-forest-900 text-xs">Guest Acceptance & Confirmation</div>
+              <p className="text-[10px] text-stone-500 leading-tight">
+                I hereby acknowledge and accept the day-wise itinerary, inclusions, exclusions, and payment milestones outlined in this proposal.
+              </p>
+              <div className="pt-8 border-b border-stone-300"></div>
+              <div className="flex justify-between text-[10px] text-stone-400">
+                <span>Guest: {sanitizedQuote.guestName}</span>
+                <span>Date: ____/____/________</span>
+              </div>
+            </div>
+
+            <div className="border border-stone-200 rounded-xl p-4 bg-stone-50 space-y-2">
+              <div className="font-bold text-forest-900 text-xs">For {companySettings.agencyName}</div>
+              <p className="text-[10px] text-stone-500 leading-tight">
+                Authorized Travel Specialist Desk • Registered Tour Program
+              </p>
+              <div className="pt-8 border-b border-stone-300"></div>
+              <div className="flex justify-between text-[10px] text-stone-400">
+                <span>Authorized Signatory</span>
+                <span>Agency Seal</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Document Footer */}
+          <div className="pt-6 border-t border-stone-200 text-center text-[11px] text-stone-400">
+            <p>© {new Date().getFullYear()} {companySettings.agencyName} • Curated with pride in India for {sanitizedQuote.guestName}.</p>
+            <p className="mt-1">For modifications, contact your personal trip concierge: {companySettings.phone} • {companySettings.email}</p>
+          </div>
         </div>
       </div>
 

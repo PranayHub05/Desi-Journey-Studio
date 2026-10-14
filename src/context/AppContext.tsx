@@ -17,6 +17,8 @@ import {
   UserRole,
   Vehicle,
   Attraction,
+  AuthUser,
+  TripClausePreset,
 } from '../types';
 import {
   initialCompanySettings,
@@ -30,6 +32,7 @@ import {
   sampleTripTemplates,
   sampleVehicles,
   systemAuthUsers,
+  defaultClausePresets,
 } from '../lib/mockData';
 
 interface AppContextType {
@@ -39,6 +42,17 @@ interface AppContextType {
   logout: () => void;
   companySettings: CompanySettings;
   updateCompanySettings: (settings: Partial<CompanySettings>) => void;
+
+  // Team & Auth Users
+  authUsers: AuthUser[];
+  updateAuthUser: (id: string, updates: Partial<AuthUser>) => void;
+  createAuthUser: (user: Omit<AuthUser, 'id'>) => AuthUser;
+  deleteAuthUser: (id: string) => void;
+
+  // Trip Clauses Presets
+  clausePresets: TripClausePreset[];
+  addClausePreset: (preset: Omit<TripClausePreset, 'id'>) => TripClausePreset;
+  deleteClausePreset: (id: string) => void;
   
   // Leads
   leads: Lead[];
@@ -112,9 +126,12 @@ const STORAGE_KEYS = {
   CUSTOMER_PAYMENTS: 'dj_customer_payments_v1',
   USER_ROLE: 'dj_user_role_v1',
   LOGGED_IN_USER: 'dj_logged_in_user_v2',
+  AUTH_USERS: 'dj_auth_users_v3',
+  CLAUSE_PRESETS: 'dj_clause_presets_v1',
 };
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [authUsers, setAuthUsers] = useState<AuthUser[]>(systemAuthUsers);
   const [currentUser, setCurrentUser] = useState<UserProfile | null>({
     id: systemAuthUsers[0].id,
     name: systemAuthUsers[0].name,
@@ -125,6 +142,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   });
 
   const [companySettings, setCompanySettings] = useState<CompanySettings>(initialCompanySettings);
+  const [clausePresets, setClausePresets] = useState<TripClausePreset[]>(defaultClausePresets);
   const [leads, setLeads] = useState<Lead[]>(sampleLeads);
   const [hotels, setHotels] = useState<Hotel[]>(sampleHotels);
   const [vehicles, setVehicles] = useState<Vehicle[]>(sampleVehicles);
@@ -141,6 +159,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Load from LocalStorage on mount
   useEffect(() => {
     try {
+      const savedAuthUsers = localStorage.getItem(STORAGE_KEYS.AUTH_USERS);
+      if (savedAuthUsers) {
+        setAuthUsers(JSON.parse(savedAuthUsers));
+      }
+
+      const savedPresets = localStorage.getItem(STORAGE_KEYS.CLAUSE_PRESETS);
+      if (savedPresets) {
+        setClausePresets(JSON.parse(savedPresets));
+      }
+
       const savedUser = localStorage.getItem(STORAGE_KEYS.LOGGED_IN_USER);
       if (savedUser) {
         setCurrentUser(JSON.parse(savedUser));
@@ -178,7 +206,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       const savedRole = localStorage.getItem(STORAGE_KEYS.USER_ROLE) as UserRole | null;
       if (savedRole) {
-        setCurrentUser((u) => u ? { ...u, role: savedRole } : null);
+        setCurrentUser((u) => (u ? { ...u, role: savedRole } : null));
       }
     } catch (e) {
       console.warn('Failed to hydrate from localStorage, fallback to initial state', e);
@@ -191,6 +219,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     if (!isHydrated) return;
     try {
+      localStorage.setItem(STORAGE_KEYS.AUTH_USERS, JSON.stringify(authUsers));
+      localStorage.setItem(STORAGE_KEYS.CLAUSE_PRESETS, JSON.stringify(clausePresets));
       localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(companySettings));
       localStorage.setItem(STORAGE_KEYS.LEADS, JSON.stringify(leads));
       localStorage.setItem(STORAGE_KEYS.HOTELS, JSON.stringify(hotels));
@@ -206,6 +236,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [
     isHydrated,
+    authUsers,
+    clausePresets,
     companySettings,
     leads,
     hotels,
@@ -227,12 +259,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const login = (usernameOrEmail: string, password?: string): boolean => {
     const clean = usernameOrEmail.trim().toLowerCase();
-    const matched = systemAuthUsers.find(
+    const matched = authUsers.find(
       (u) =>
         u.username.toLowerCase() === clean ||
-        u.email.toLowerCase() === clean
+        u.email.toLowerCase() === clean ||
+        (clean === 'planner@desijoueney.com' && u.username === 'planner')
     );
     if (matched) {
+      if (password && password.trim()) {
+        const expected = matched.password || matched.defaultPassword;
+        if (expected && expected !== password.trim()) {
+          return false;
+        }
+      }
       const profile: UserProfile = {
         id: matched.id,
         name: matched.name,
@@ -256,6 +295,59 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try {
       localStorage.removeItem(STORAGE_KEYS.LOGGED_IN_USER);
     } catch {}
+  };
+
+  const updateAuthUser = (id: string, updates: Partial<AuthUser>) => {
+    setAuthUsers((prev) =>
+      prev.map((u) => {
+        if (u.id === id) {
+          const updated = { ...u, ...updates };
+          if (currentUser && currentUser.id === id) {
+            const newProfile: UserProfile = {
+              id: updated.id,
+              name: updated.name,
+              email: updated.email,
+              role: updated.role,
+              phone: updated.phone,
+              title: updated.title,
+            };
+            setCurrentUser(newProfile);
+            try {
+              localStorage.setItem(STORAGE_KEYS.LOGGED_IN_USER, JSON.stringify(newProfile));
+              localStorage.setItem(STORAGE_KEYS.USER_ROLE, newProfile.role);
+            } catch {}
+          }
+          return updated;
+        }
+        return u;
+      })
+    );
+  };
+
+  const createAuthUser = (user: Omit<AuthUser, 'id'>): AuthUser => {
+    const newUser: AuthUser = {
+      ...user,
+      id: `user-${Date.now()}`,
+    };
+    setAuthUsers((prev) => [...prev, newUser]);
+    return newUser;
+  };
+
+  const deleteAuthUser = (id: string) => {
+    setAuthUsers((prev) => prev.filter((u) => u.id !== id));
+  };
+
+  const addClausePreset = (preset: Omit<TripClausePreset, 'id'>): TripClausePreset => {
+    const newPreset: TripClausePreset = {
+      ...preset,
+      id: `preset-${Date.now()}`,
+    };
+    setClausePresets((prev) => [...prev, newPreset]);
+    return newPreset;
+  };
+
+  const deleteClausePreset = (id: string) => {
+    setClausePresets((prev) => prev.filter((p) => p.id !== id));
   };
 
   const updateCompanySettings = (settings: Partial<CompanySettings>) => {
@@ -507,6 +599,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         logout,
         companySettings,
         updateCompanySettings,
+        authUsers,
+        updateAuthUser,
+        createAuthUser,
+        deleteAuthUser,
+        clausePresets,
+        addClausePreset,
+        deleteClausePreset,
         leads,
         addLead,
         updateLead,

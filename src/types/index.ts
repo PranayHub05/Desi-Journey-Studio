@@ -17,7 +17,19 @@ export interface AuthUser {
   role: UserRole;
   title: string;
   phone: string;
+  password?: string;
   defaultPassword?: string;
+}
+
+export interface TripClausePreset {
+  id: string;
+  title: string;
+  description?: string;
+  category: string;
+  inclusions: string[];
+  exclusions: string[];
+  termsAndConditions: string[];
+  isBuiltIn?: boolean;
 }
 
 
