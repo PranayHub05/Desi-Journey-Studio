@@ -1,153 +1,179 @@
-# Desi Journey Studio — Travel CRM & Itinerary Operations Platform
+# Desi Journey Studio
 
-> **Production-minded, responsive web application for Desi Journey**, an Indian boutique travel agency and tour operator. Built with Next.js 14 App Router, TypeScript, Tailwind CSS ("Alpine Premium" design system), and domain-tested calculation engines.
-
----
-
-## 🌟 Executive Summary & Key Highlights
-
-Desi Journey Studio provides a single operating system bridging customer acquisition, tour formulate wizardry, inventory management, dynamic cost calculation, and post-booking fulfillment:
-
-1. **Dual-Mode Privacy & Disclosure Engine (Core Business Rule):**
-   - **Pre-Advance Quotation Mode (`masked`):** Replaces exact hotel names with category descriptions (e.g., *"Selected 4-Star Premium Resort, Mall Road Area or Similar"*). Driver phone numbers, vehicle registrations, and internal supplier costs are strictly redacted.
-   - **Confirmed Trip Mode (`disclosed`):** Automatically reveals confirmed hotel names, room categories, driver name, and vehicle license plate once the 30% advance deposit is recorded.
-2. **Flagship 8-Step Itinerary Studio:**
-   - Sequential step wizard: Guest & Trip Setup, Route Sequencing, Day-wise Timeline Builder, Hotel & Meal Plan (EP/CP/MAP/AP) Allocation, Vehicle Pricing Engine, Live Costing & Profit Margins, Terms Checklist, and Customer Proposal Preview.
-3. **Live Costing & Tour Operator GST Engine:**
-   - Real-time calculation of hotel rooms, transport models (per-day, per-km, packages), guide & permits, configurable agency margins (% or fixed INR), and 5% SAC 998555 GST toggle.
-4. **Instant Distribution & Print-Optimized PDF Export:**
-   - Generates crystal-clear, zero-clipping multi-page PDFs using CSS print media rules (`@media print`).
-   - One-click formatted WhatsApp link with prefilled proposal summary and interactive web proposal link.
-   - Email composer with native mail client triggering.
-5. **Master Inventories & Operations Manifest:**
-   - Hotel database with star ratings, meal plans, and double/extra-bed rates.
-   - Fleet database with capacity and tariff cards.
-   - Regional destination knowledge base with verified attractions and route templates.
-   - Suppliers accounts ledger and customer collections with UTR tracking.
-   - Tour calendar movement chart with one-click Hotel Vouchers and Chauffeur Duty Slips.
+Desi Journey Studio is a web-based travel operations and itinerary management application designed for tour operators and travel agencies. It provides an integrated system for managing customer leads, building day-by-day itineraries, calculating trip costings, and generating formatted customer proposals.
 
 ---
 
-## 🛠️ Architecture & Tech Stack
+## Overview
 
-- **Framework:** Next.js 14 (App Router), React 18, TypeScript (Strict Mode)
-- **Styling & UI:** Tailwind CSS with the **"Alpine Premium"** design palette:
-  - Deep Forest Green (`#173F35`) — authoritative, trustworthy
-  - Secondary Emerald (`#267A62`) — interactive accents
-  - Warm Canvas Stone (`#F7F5EE`) — eye-fatigue reducing background
-  - Premium Accent Gold (`#D4A64B`) — proposal luxury accents
-- **Icons:** `lucide-react`
-- **State & Storage:** Reactive Context API with LocalStorage sync and seamless Firestore / Firebase compatibility.
-- **Testing:** Node.js native test runner with `tsx` (`test/calculations.test.ts`).
+The platform coordinates the entire lifecycle of custom holiday planning and operations:
+
+- **Lead Management:** Inbound enquiry tracking, contact history, and pipeline progression.
+- **Itinerary Planning:** Day-wise travel timeline formulation, route sequencing, and activity scheduling.
+- **Consolidated Stays:** Consecutive days spent in the same destination (e.g., multi-day stays) can be grouped into unified sections containing day-by-day sightseeing details.
+- **Costing and Margin Engine:** Live tour costing incorporating hotel rates, vehicle tariffs, driver allowances, markup margins (percentage or fixed amount), and goods and services tax (GST).
+- **Dual Disclosure Modes:**
+  - *Masked (Pre-Advance):* Redacts exact hotel property names and driver contact details to protect commercial supplier arrangements prior to booking confirmation.
+  - *Disclosed (Confirmed):* Discloses full property names, room categories, driver details, and vehicle numbers once a booking deposit is recorded.
+- **Proposal Export and Sharing:** Print-ready PDF documents formatted to prevent awkward page breaks, pre-formatted WhatsApp share links, and email dispatch.
+- **Master Databases:** Structured catalogs for hotel properties, transport fleet vehicles, sightseeing attractions, supplier accounts, and reusable rule presets.
+- **Data Persistence:** Backed by Google Cloud Firestore with local browser storage (`localStorage`) fallback for offline resilience.
 
 ---
 
-## 🚀 Quickstart & Local Setup
+## Tech Stack
 
-### 1. Prerequisites
-- **Node.js**: v18.17+ or v20+ LTS
-- **npm**: v9+
+| Layer | Technologies |
+|---|---|
+| **Framework** | Next.js 14 (App Router), React 18 |
+| **Language** | TypeScript |
+| **Styling** | Tailwind CSS |
+| **Icons** | Lucide React |
+| **Database** | Firebase Cloud Firestore |
+| **AI Services (Optional)** | Google Gemini API (via `@google/genai` / REST) |
+| **Testing** | Node.js Test Runner with `tsx` |
 
-### 2. Installation
-```bash
-# Clone the repository and navigate to the directory
-cd "Desi Journey Studio"
+---
 
-# Install project dependencies
-npm install
+## Directory Structure
+
+```text
+├── public/                 # Static assets, branding logos, and public images
+├── src/
+│   ├── app/                # Next.js App Router pages and API routes
+│   │   ├── api/            # Server endpoints (AI itinerary generation)
+│   │   ├── calendar/       # Movement calendar & operations manifest
+│   │   ├── destinations/   # Destinations & attractions database
+│   │   ├── hotels/         # Hotel property database & rate cards
+│   │   ├── itineraries/    # Itinerary management, studio builder & proposal preview
+│   │   ├── leads/          # Customer leads and enquiries CRM
+│   │   ├── login/          # Standalone authentication entry
+│   │   ├── payments/       # Customer payments & supplier ledger
+│   │   ├── reports/        # Analytics and performance reports
+│   │   ├── settings/       # Company profile, bank details & cloud sync
+│   │   ├── suppliers/      # Supplier registry and payment tracker
+│   │   ├── templates/      # Pre-made customizable tour packages
+│   │   └── vehicles/       # Transport fleet and vehicle tariff cards
+│   ├── components/         # Reusable UI components and layouts
+│   ├── context/            # AppContext state provider and synchronization logic
+│   ├── lib/                # Calculation engines, Firebase configuration & Firestore services
+│   └── types/              # TypeScript interface and type declarations
+├── test/                   # Automated unit tests for calculation logic
+└── package.json            # Project dependencies and operational scripts
 ```
 
-### 3. Environment Variables
-Copy `.env.example` to `.env.local`:
-```bash
-cp .env.example .env.local
-```
-*(Note: The application runs 100% out of the box with offline mock persistence and local fallbacks without requiring live third-party API keys).*
+---
 
-### 4. Running the Development Server
-```bash
-npm run dev
-```
-Open [http://localhost:3000](http://localhost:3000) in your web browser.
+## Getting Started
 
-### 5. Running Automated Unit Tests
+### Prerequisites
+
+- **Node.js**: v18.17.0 or higher (LTS recommended)
+- **npm**: v9.0.0 or higher
+
+### Installation
+
+1. Clone or download the repository to your local machine:
+   ```bash
+   cd "Desi Journey Studio"
+   ```
+
+2. Install dependencies:
+   ```bash
+   npm install
+   ```
+
+3. Set up environment variables:
+   Copy `.env.example` to `.env.local` (or create `.env.local`):
+   ```bash
+   cp .env.example .env.local
+   ```
+
+4. Start the local development server:
+   ```bash
+   npm run dev
+   ```
+
+5. Open [http://localhost:3000](http://localhost:3000) in your web browser.
+
+---
+
+## Configuration & Environment Variables
+
+The application can run in standalone mode with local sample data or connected to Google Cloud Firestore. The following environment variables can be configured in `.env.local`:
+
+```env
+# Google Gemini API (Optional for AI itinerary generation)
+GEMINI_API_KEY=your_gemini_api_key_here
+
+# Firebase Configuration (Cloud Firestore persistence)
+NEXT_PUBLIC_FIREBASE_API_KEY=your_firebase_api_key
+NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=your_project.firebaseapp.com
+NEXT_PUBLIC_FIREBASE_PROJECT_ID=your_project_id
+NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=your_project.firebasestorage.app
+NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
+NEXT_PUBLIC_FIREBASE_APP_ID=your_app_id
+NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=your_measurement_id
+```
+
+### Firestore Security Rules
+
+To allow the application to read and write data across all authorized agency laptops, configure your Firestore database rules in the [Firebase Console](https://console.firebase.google.com) under **Firestore Database** → **Rules**:
+
+```javascript
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if true;
+    }
+  }
+}
+```
+
+---
+
+## Application Modules
+
+| Module | Route | Description |
+|---|---|---|
+| **Dashboard** | `/` | Operational dashboard displaying active leads, quotation pipeline value, and departure metrics. |
+| **Leads CRM** | `/leads` | Management of customer inquiries, contact details, travel requirements, and conversion to itineraries. |
+| **Itineraries** | `/itineraries` | List of created quotations and itineraries with status filters and revision tracking. |
+| **Itinerary Studio** | `/itineraries/builder` | Multi-step itinerary builder handling destination routing, hotel allocation, transport, and costing. |
+| **Proposal Preview** | `/itineraries/[id]/preview` | Customer-facing proposal document supporting PDF print layout, disclosure mode toggling, and sharing links. |
+| **Hotels Database** | `/hotels` | Directory of hotel properties with room categories, seasonal rates, meal plan options, and photo links. |
+| **Transport Fleet** | `/vehicles` | Vehicle types, seating capacities, and pricing models (per-day, per-kilometer, or fixed circuit rates). |
+| **Destinations** | `/destinations` | Geographic catalog of destinations, transfer distance benchmarks, and sightseeing attraction details. |
+| **Trip Templates** | `/templates` | Library of pre-configured tour packages that can be loaded and customized for specific inquiries. |
+| **Payments** | `/payments` | Tracking of client booking deposits, balance settlements, and payment reference numbers. |
+| **Suppliers** | `/suppliers` | Supplier database and payment ledger tracking payables against fulfilled services. |
+| **Calendar** | `/calendar` | Chronological departure and tour movement calendar for operational dispatch. |
+| **Reports** | `/reports` | Business metrics including quotation conversion rates and destination distribution. |
+| **Settings** | `/settings` | Agency company profile, official bank details, default policy presets, and Cloud Firestore synchronization controls. |
+
+---
+
+## Available Scripts
+
+- `npm run dev`: Starts the Next.js development server on port 3000.
+- `npm run build`: Compiles the application and generates an optimized production build.
+- `npm start`: Runs the built production application.
+- `npm test`: Runs automated unit tests covering financial formulas, GST calculation, duration checks, and data sanitization.
+- `npm run lint`: Runs ESLint checks on source files.
+
+---
+
+## Testing
+
+Domain logic and mathematical calculations are covered by automated unit tests in `test/calculations.test.ts`:
+
+- Currency formatting using the Indian numbering standard (`formatINR`).
+- Validation of travel duration and calendar dates (`calculateTripDuration`).
+- Cost aggregation, margin application, and statutory GST calculation (`calculateTourCosting`).
+- Pre-advance data sanitization and masking (`sanitizeQuotationForCustomer`).
+
+Execute the test suite with:
 ```bash
 npm test
 ```
-Executes domain calculations, GST slabs, nights/dates validation, and Pre-Advance redaction tests.
-
-### 6. Production Build
-```bash
-npm run build
-npm start
-```
-
----
-
-## 🧭 Navigation & Modules Sitemap
-
-| # | Workspace Module | Route | Purpose & Key Features |
-|---|---|---|---|
-| 1 | **Command Center** | `/` | Executive KPI cards, urgent follow-up SLA queue, upcoming departures, phone rate estimator. |
-| 2 | **Leads & Guests CRM** | `/leads` | Inbound pipeline, SLA countdowns, WhatsApp direct chat, 1-click Itinerary Studio pre-fill. |
-| 3 | **Itineraries & Quotes** | `/itineraries` | Master proposals ledger, version history (`v1`, `v2`), disclosure mode indicator. |
-| 4 | **Itinerary Studio** | `/itineraries/builder` | 8-step wizard formulating day-by-day schedules, hotels, vehicles, margins, and preview. |
-| 5 | **Customer Proposal** | `/itineraries/[id]/preview` | Print-ready PDF proposal view, WhatsApp share composer, Pre-Advance toggle. |
-| 6 | **Hotel Database** | `/hotels` | Property directory, EP/CP/MAP/AP rate cards, masked names, CSV export. |
-| 7 | **Vehicles & Fleet** | `/vehicles` | Transport fleet, per-day/per-km tariffs, driver night allowance, toll budgets. |
-| 8 | **Destinations & Sights** | `/destinations` | Knowledge base of attractions, duration estimates, verified status, route circuits. |
-| 9 | **Suppliers & Ledger** | `/suppliers` | Vendor agreements, agreed payable vs paid, UTR payout logger. |
-| 10 | **Tour Calendar & Ops** | `/calendar` | Movement chart, departure manifests, Chauffeur Duty Slips & Hotel Vouchers. |
-| 11 | **Collections & Receipts** | `/payments` | 30% booking advance tracking, installment ledger, GST receipts. |
-| 12 | **Business Intelligence** | `/reports` | Tour conversion funnel, quoted vs realized margins, destination share. |
-| 13 | **Settings & Templates** | `/settings` | Agency branding, HDFC bank details, UPI VPA, terms, demo data reset. |
-
----
-
-## 🔒 Security & Role Simulator
-
-Use the **Role Switcher** in the top navbar to simulate distinct team perspectives:
-- **Admin / Agency Owner:** Full read/write across master costing, profit margins, bank details, and settings.
-- **Sales & Itinerary Planner:** Lead capture, day builder, and proposal sharing. Wholesale costs are hidden from customer exports.
-- **Operations & Dispatch:** Confirmed departures, chauffeurs, vouchers, and room manifests.
-- **Accounts & Finance:** Advances, UTR references, receipts, and supplier payouts.
-
----
-
-## ☁️ Firebase Deployment Guide
-
-When you are ready to connect to production Cloud Firestore and Firebase Hosting:
-
-1. Create a Firebase project in the [Firebase Console](https://console.firebase.google.com).
-2. Enable **Authentication** (Email/Password & Google Sign-In).
-3. Enable **Cloud Firestore** and deploy the included security rules:
-   ```bash
-   firebase deploy --only firestore:rules
-   ```
-4. Update `.env.local` with your Firebase project keys from Project Settings.
-5. Deploy to Firebase Hosting / Vercel:
-   ```bash
-   # Deploying to Vercel (recommended for Next.js App Router)
-   vercel --prod
-   ```
-
----
-
-## 🧪 Automated Test Suite
-
-Unit tests in `test/calculations.test.ts` verify:
-1. `formatINR`: Indian numeral grouping (`₹1,57,500`).
-2. `calculateTripDuration`: Strict night and day consistency (`5N = 6D`).
-3. `calculateTourCosting`: Wholesale sum, configurable markup, 5% GST toggle, advance required.
-4. `calculateTourCosting (No GST)`: Fixed markup without tax.
-5. `sanitizeQuotationForCustomer`: Pre-advance redaction of exact hotel names, confidential driver notes, and internal wholesale margins.
-
-Run them anytime with:
-```bash
-npm test
-```
-
----
-
-## 🔄 Resetting Showcase Demo Data
-At any time, click the **Reset Icon** in the top navbar or navigate to **Settings & Profile** and click **"Reset Demo Data"** to restore fresh, pre-configured sample leads, hotels, vehicles, itineraries, and settings.
