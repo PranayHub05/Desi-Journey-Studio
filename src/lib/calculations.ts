@@ -105,11 +105,12 @@ export function calculateTripDuration(
 export function addDaysToDate(dateStr: string, daysToAdd: number): string {
   if (!dateStr) return '';
   const [y, m, d] = dateStr.split('-').map(Number);
-  const date = new Date(y, m - 1, d);
-  date.setDate(date.getDate() + daysToAdd);
-  const yyyy = date.getFullYear();
-  const mm = String(date.getMonth() + 1).padStart(2, '0');
-  const dd = String(date.getDate()).padStart(2, '0');
+  if (!y || isNaN(m) || !d) return dateStr;
+  const date = new Date(Date.UTC(y, m - 1, d));
+  date.setUTCDate(date.getUTCDate() + daysToAdd);
+  const yyyy = date.getUTCFullYear();
+  const mm = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(date.getUTCDate()).padStart(2, '0');
   return `${yyyy}-${mm}-${dd}`;
 }
 
@@ -315,7 +316,7 @@ export function sanitizeQuotationForCustomer(
   const showExactHotels = !isPreAdvance && quote.customization.showExactHotelNames;
   const showDriverDetails = !isPreAdvance && quote.customization.showDriverVehicleDetails;
 
-  const sanitizedDays: ItineraryDay[] = quote.days.map((day) => {
+  const sanitizedDays: ItineraryDay[] = (quote.days || []).map((day, idx) => {
     let displayHotelName = day.customHotelName;
 
     if (!showExactHotels) {
@@ -329,8 +330,13 @@ export function sanitizeQuotationForCustomer(
       }
     }
 
+    // Ensure day date is strictly synchronized with the quotation's master startDate
+    const dayOffset = typeof day.dayNumber === 'number' && day.dayNumber > 0 ? day.dayNumber - 1 : idx;
+    const computedDate = quote.startDate ? addDaysToDate(quote.startDate, dayOffset) : day.date;
+
     return {
       ...day,
+      date: computedDate,
       customHotelName: displayHotelName,
       confidentialOpsNotes: undefined, // Always stripped from customer documents
     };

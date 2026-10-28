@@ -450,6 +450,14 @@ function ItineraryBuilderContent() {
         setInfants(lead.infants || 0);
         setRoomsCount(Math.ceil(lead.adults / 2));
         setTripTitle(`${lead.destination} Tailored Holiday`);
+        if (lead.startDate) {
+          setDays((prev) =>
+            prev.map((d, i) => ({
+              ...d,
+              date: addDaysToDate(lead.startDate, i),
+            }))
+          );
+        }
       }
     }
   }, [editQuoteId, fromLeadId, quotations, leads, vehicles]);
@@ -594,6 +602,12 @@ function ItineraryBuilderContent() {
   // Construct draft quotation object
   const currentQuoteObject: Quotation = useMemo(() => {
     const selectedVeh = vehicles.find((v) => v.id === selectedVehicleId);
+    const alignedDays = days.map((d, i) => ({
+      ...d,
+      date: startDate
+        ? addDaysToDate(startDate, typeof d.dayNumber === 'number' && d.dayNumber > 0 ? d.dayNumber - 1 : i)
+        : d.date,
+    }));
     return {
       id: editQuoteId || `quote-preview`,
       quoteNumber: editQuoteId ? (quotations.find((q) => q.id === editQuoteId)?.quoteNumber || 'DJ-2026-DRAFT') : 'DJ-2026-PREVIEW',
@@ -615,7 +629,7 @@ function ItineraryBuilderContent() {
       roomsCount,
       vehicleId: selectedVehicleId,
       vehicleName: selectedVeh ? selectedVeh.displayName : 'Private AC Vehicle',
-      days,
+      days: alignedDays,
       costingItems,
       costing: liveCosting,
       inclusions,

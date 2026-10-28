@@ -34,6 +34,7 @@ import {
   systemAuthUsers,
   defaultClausePresets,
 } from '../lib/mockData';
+import { addDaysToDate } from '../lib/calculations';
 import {
   COLLECTIONS,
   getCompanySettingsFromFirestore,
@@ -926,7 +927,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const getQuotationById = (id: string) => {
-    return quotations.find((q) => q.id === id);
+    const q = quotations.find((quote) => quote.id === id);
+    if (!q) return undefined;
+    if (q.startDate && q.days && q.days.length > 0) {
+      const alignedDays = q.days.map((d, i) => {
+        const expectedDate = addDaysToDate(
+          q.startDate,
+          typeof d.dayNumber === 'number' && d.dayNumber > 0 ? d.dayNumber - 1 : i
+        );
+        return d.date !== expectedDate ? { ...d, date: expectedDate } : d;
+      });
+      return { ...q, days: alignedDays };
+    }
+    return q;
   };
 
   const createQuotation = (

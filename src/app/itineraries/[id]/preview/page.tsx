@@ -31,6 +31,7 @@ import { useApp } from '../../../../context/AppContext';
 import {
   formatINR,
   formatIndianDate,
+  addDaysToDate,
   sanitizeQuotationForCustomer,
   generateWhatsAppMessage,
   groupItineraryDaysByLocation,
@@ -80,30 +81,39 @@ export default function QuotationCustomerPreviewPage() {
     }[] = [];
 
     let currentStay: (typeof stays)[0] | null = null;
-    sanitizedQuote.days.forEach((day, idx) => {
-      if (day.dayType === 'Departure') return;
+    for (let idx = 0; idx < sanitizedQuote.days.length; idx++) {
+      const day = sanitizedQuote.days[idx];
+      if (day.dayType === 'Departure') continue;
       const hotelObj = hotels.find((h) => h.id === day.hotelId);
       const hName = day.customHotelName || hotelObj?.name || `${day.hotelDestination} Selected Property`;
       const img = hotelObj?.imageUrl || hotelObj?.photos?.[0]?.url || 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=800&q=80';
 
+      const dayDate = day.date || (rawQuote.startDate ? addDaysToDate(rawQuote.startDate, idx) : '');
+
       if (currentStay && currentStay.hotelName === hName && currentStay.destination === day.hotelDestination) {
         currentStay.nightsCount += 1;
-        currentStay.checkOutDate = sanitizedQuote.days[idx + 1]?.date || day.date;
+        currentStay.checkOutDate = addDaysToDate(currentStay.checkInDate, currentStay.nightsCount);
       } else {
-        if (currentStay) stays.push(currentStay);
+        if (currentStay) {
+          currentStay.checkOutDate = addDaysToDate(currentStay.checkInDate, currentStay.nightsCount);
+          stays.push(currentStay);
+        }
         currentStay = {
           destination: day.hotelDestination,
           hotelName: hName,
           roomCategory: day.roomCategory || 'Deluxe Room',
           mealPlan: day.mealPlan || 'MAP',
           nightsCount: 1,
-          checkInDate: day.date,
-          checkOutDate: sanitizedQuote.days[idx + 1]?.date || day.date,
+          checkInDate: dayDate,
+          checkOutDate: addDaysToDate(dayDate, 1),
           imageUrl: img,
         };
       }
-    });
-    if (currentStay) stays.push(currentStay);
+    }
+    if (currentStay) {
+      currentStay.checkOutDate = addDaysToDate(currentStay.checkInDate, currentStay.nightsCount);
+      stays.push(currentStay);
+    }
     return stays;
   }, [rawQuote, hotels]);
 
