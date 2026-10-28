@@ -7,7 +7,6 @@ import {
   deleteDoc,
   query,
   orderBy,
-  writeBatch,
 } from 'firebase/firestore';
 import { db, isFirebaseConfigured } from './firebase';
 import {
@@ -19,6 +18,11 @@ import {
   AuthUser,
   TripClausePreset,
   TripTemplate,
+  Destination,
+  Supplier,
+  CustomerPayment,
+  SupplierPaymentEntry,
+  ShareEvent,
 } from '../types';
 
 export const COLLECTIONS = {
@@ -30,7 +34,35 @@ export const COLLECTIONS = {
   USERS: 'users',
   CLAUSE_PRESETS: 'clause_presets',
   TRIP_TEMPLATES: 'trip_templates',
+  DESTINATIONS: 'destinations',
+  SUPPLIERS: 'suppliers',
+  CUSTOMER_PAYMENTS: 'customer_payments',
+  SUPPLIER_PAYMENTS: 'supplier_payments',
+  SHARE_EVENTS: 'share_events',
 };
+
+/**
+ * Deep sanitization helper that strips all `undefined` values recursively.
+ * Firebase Firestore setDoc/updateDoc strictly crashes if any key has an undefined value.
+ */
+export function sanitizeForFirestore<T>(data: T): T {
+  if (data === null || data === undefined) {
+    return null as any;
+  }
+  if (Array.isArray(data)) {
+    return data.map((item) => sanitizeForFirestore(item)) as any;
+  }
+  if (typeof data === 'object' && !(data instanceof Date)) {
+    const cleaned: Record<string, any> = {};
+    for (const [key, value] of Object.entries(data)) {
+      if (value !== undefined) {
+        cleaned[key] = sanitizeForFirestore(value);
+      }
+    }
+    return cleaned as T;
+  }
+  return data;
+}
 
 // -----------------------------------------------------------------------------
 // Agency Settings
@@ -53,7 +85,8 @@ export async function saveCompanySettingsToFirestore(settings: CompanySettings):
   if (!isFirebaseConfigured || !db) return false;
   try {
     const docRef = doc(db, COLLECTIONS.SETTINGS, 'default');
-    await setDoc(docRef, { ...settings, updatedAt: new Date().toISOString() }, { merge: true });
+    const cleaned = sanitizeForFirestore({ ...settings, updatedAt: new Date().toISOString() });
+    await setDoc(docRef, cleaned, { merge: true });
     return true;
   } catch (err) {
     console.error('Failed to save settings to Firestore:', err);
@@ -67,9 +100,11 @@ export async function saveCompanySettingsToFirestore(settings: CompanySettings):
 export async function getLeadsFromFirestore(): Promise<Lead[] | null> {
   if (!isFirebaseConfigured || !db) return null;
   try {
-    const q = query(collection(db, COLLECTIONS.LEADS), orderBy('createdAt', 'desc'));
-    const snap = await getDocs(q);
-    return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Lead);
+    const snap = await getDocs(collection(db, COLLECTIONS.LEADS));
+    const leads = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Lead);
+    return leads.sort(
+      (a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
+    );
   } catch (err) {
     console.warn('Could not read leads from Firestore:', err);
     return null;
@@ -79,7 +114,8 @@ export async function getLeadsFromFirestore(): Promise<Lead[] | null> {
 export async function saveLeadToFirestore(lead: Lead): Promise<boolean> {
   if (!isFirebaseConfigured || !db) return false;
   try {
-    await setDoc(doc(db, COLLECTIONS.LEADS, lead.id), lead, { merge: true });
+    const cleaned = sanitizeForFirestore(lead);
+    await setDoc(doc(db, COLLECTIONS.LEADS, lead.id), cleaned, { merge: true });
     return true;
   } catch (err) {
     console.error('Failed to save lead to Firestore:', err);
@@ -104,9 +140,11 @@ export async function deleteLeadFromFirestore(id: string): Promise<boolean> {
 export async function getQuotationsFromFirestore(): Promise<Quotation[] | null> {
   if (!isFirebaseConfigured || !db) return null;
   try {
-    const q = query(collection(db, COLLECTIONS.QUOTATIONS), orderBy('createdAt', 'desc'));
-    const snap = await getDocs(q);
-    return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Quotation);
+    const snap = await getDocs(collection(db, COLLECTIONS.QUOTATIONS));
+    const quotes = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Quotation);
+    return quotes.sort(
+      (a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
+    );
   } catch (err) {
     console.warn('Could not read quotations from Firestore:', err);
     return null;
@@ -116,7 +154,8 @@ export async function getQuotationsFromFirestore(): Promise<Quotation[] | null> 
 export async function saveQuotationToFirestore(quote: Quotation): Promise<boolean> {
   if (!isFirebaseConfigured || !db) return false;
   try {
-    await setDoc(doc(db, COLLECTIONS.QUOTATIONS, quote.id), quote, { merge: true });
+    const cleaned = sanitizeForFirestore(quote);
+    await setDoc(doc(db, COLLECTIONS.QUOTATIONS, quote.id), cleaned, { merge: true });
     return true;
   } catch (err) {
     console.error('Failed to save quotation to Firestore:', err);
@@ -152,7 +191,8 @@ export async function getHotelsFromFirestore(): Promise<Hotel[] | null> {
 export async function saveHotelToFirestore(hotel: Hotel): Promise<boolean> {
   if (!isFirebaseConfigured || !db) return false;
   try {
-    await setDoc(doc(db, COLLECTIONS.HOTELS, hotel.id), hotel, { merge: true });
+    const cleaned = sanitizeForFirestore(hotel);
+    await setDoc(doc(db, COLLECTIONS.HOTELS, hotel.id), cleaned, { merge: true });
     return true;
   } catch (err) {
     console.error('Failed to save hotel to Firestore:', err);
@@ -188,7 +228,8 @@ export async function getVehiclesFromFirestore(): Promise<Vehicle[] | null> {
 export async function saveVehicleToFirestore(vehicle: Vehicle): Promise<boolean> {
   if (!isFirebaseConfigured || !db) return false;
   try {
-    await setDoc(doc(db, COLLECTIONS.VEHICLES, vehicle.id), vehicle, { merge: true });
+    const cleaned = sanitizeForFirestore(vehicle);
+    await setDoc(doc(db, COLLECTIONS.VEHICLES, vehicle.id), cleaned, { merge: true });
     return true;
   } catch (err) {
     console.error('Failed to save vehicle to Firestore:', err);
@@ -224,7 +265,8 @@ export async function getTripTemplatesFromFirestore(): Promise<TripTemplate[] | 
 export async function saveTripTemplateToFirestore(template: TripTemplate): Promise<boolean> {
   if (!isFirebaseConfigured || !db) return false;
   try {
-    await setDoc(doc(db, COLLECTIONS.TRIP_TEMPLATES, template.id), template, { merge: true });
+    const cleaned = sanitizeForFirestore(template);
+    await setDoc(doc(db, COLLECTIONS.TRIP_TEMPLATES, template.id), cleaned, { merge: true });
     return true;
   } catch (err) {
     console.error('Failed to save trip template to Firestore:', err);
@@ -260,7 +302,8 @@ export async function getClausePresetsFromFirestore(): Promise<TripClausePreset[
 export async function saveClausePresetToFirestore(preset: TripClausePreset): Promise<boolean> {
   if (!isFirebaseConfigured || !db) return false;
   try {
-    await setDoc(doc(db, COLLECTIONS.CLAUSE_PRESETS, preset.id), preset, { merge: true });
+    const cleaned = sanitizeForFirestore(preset);
+    await setDoc(doc(db, COLLECTIONS.CLAUSE_PRESETS, preset.id), cleaned, { merge: true });
     return true;
   } catch (err) {
     console.error('Failed to save clause preset to Firestore:', err);
@@ -275,6 +318,43 @@ export async function deleteClausePresetFromFirestore(id: string): Promise<boole
     return true;
   } catch (err) {
     console.error('Failed to delete clause preset from Firestore:', err);
+    return false;
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Destinations & Sightseeing
+// -----------------------------------------------------------------------------
+export async function getDestinationsFromFirestore(): Promise<Destination[] | null> {
+  if (!isFirebaseConfigured || !db) return null;
+  try {
+    const snap = await getDocs(collection(db, COLLECTIONS.DESTINATIONS));
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Destination);
+  } catch (err) {
+    console.warn('Could not read destinations from Firestore:', err);
+    return null;
+  }
+}
+
+export async function saveDestinationToFirestore(dest: Destination): Promise<boolean> {
+  if (!isFirebaseConfigured || !db) return false;
+  try {
+    const cleaned = sanitizeForFirestore(dest);
+    await setDoc(doc(db, COLLECTIONS.DESTINATIONS, dest.id), cleaned, { merge: true });
+    return true;
+  } catch (err) {
+    console.error('Failed to save destination to Firestore:', err);
+    return false;
+  }
+}
+
+export async function deleteDestinationFromFirestore(id: string): Promise<boolean> {
+  if (!isFirebaseConfigured || !db) return false;
+  try {
+    await deleteDoc(doc(db, COLLECTIONS.DESTINATIONS, id));
+    return true;
+  } catch (err) {
+    console.error('Failed to delete destination from Firestore:', err);
     return false;
   }
 }
@@ -296,7 +376,8 @@ export async function getAuthUsersFromFirestore(): Promise<AuthUser[] | null> {
 export async function saveAuthUserToFirestore(user: AuthUser): Promise<boolean> {
   if (!isFirebaseConfigured || !db) return false;
   try {
-    await setDoc(doc(db, COLLECTIONS.USERS, user.id), user, { merge: true });
+    const cleaned = sanitizeForFirestore(user);
+    await setDoc(doc(db, COLLECTIONS.USERS, user.id), cleaned, { merge: true });
     return true;
   } catch (err) {
     console.error('Failed to save user to Firestore:', err);
@@ -316,6 +397,121 @@ export async function deleteAuthUserFromFirestore(id: string): Promise<boolean> 
 }
 
 // -----------------------------------------------------------------------------
+// Suppliers
+// -----------------------------------------------------------------------------
+export async function getSuppliersFromFirestore(): Promise<Supplier[] | null> {
+  if (!isFirebaseConfigured || !db) return null;
+  try {
+    const snap = await getDocs(collection(db, COLLECTIONS.SUPPLIERS));
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Supplier);
+  } catch (err) {
+    console.warn('Could not read suppliers from Firestore:', err);
+    return null;
+  }
+}
+
+export async function saveSupplierToFirestore(supplier: Supplier): Promise<boolean> {
+  if (!isFirebaseConfigured || !db) return false;
+  try {
+    const cleaned = sanitizeForFirestore(supplier);
+    await setDoc(doc(db, COLLECTIONS.SUPPLIERS, supplier.id), cleaned, { merge: true });
+    return true;
+  } catch (err) {
+    console.error('Failed to save supplier to Firestore:', err);
+    return false;
+  }
+}
+
+export async function deleteSupplierFromFirestore(id: string): Promise<boolean> {
+  if (!isFirebaseConfigured || !db) return false;
+  try {
+    await deleteDoc(doc(db, COLLECTIONS.SUPPLIERS, id));
+    return true;
+  } catch (err) {
+    console.error('Failed to delete supplier from Firestore:', err);
+    return false;
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Customer Payments
+// -----------------------------------------------------------------------------
+export async function getCustomerPaymentsFromFirestore(): Promise<CustomerPayment[] | null> {
+  if (!isFirebaseConfigured || !db) return null;
+  try {
+    const snap = await getDocs(collection(db, COLLECTIONS.CUSTOMER_PAYMENTS));
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as CustomerPayment);
+  } catch (err) {
+    console.warn('Could not read customer payments from Firestore:', err);
+    return null;
+  }
+}
+
+export async function saveCustomerPaymentToFirestore(payment: CustomerPayment): Promise<boolean> {
+  if (!isFirebaseConfigured || !db) return false;
+  try {
+    const cleaned = sanitizeForFirestore(payment);
+    await setDoc(doc(db, COLLECTIONS.CUSTOMER_PAYMENTS, payment.id), cleaned, { merge: true });
+    return true;
+  } catch (err) {
+    console.error('Failed to save customer payment to Firestore:', err);
+    return false;
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Supplier Payments
+// -----------------------------------------------------------------------------
+export async function getSupplierPaymentsFromFirestore(): Promise<SupplierPaymentEntry[] | null> {
+  if (!isFirebaseConfigured || !db) return null;
+  try {
+    const snap = await getDocs(collection(db, COLLECTIONS.SUPPLIER_PAYMENTS));
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as SupplierPaymentEntry);
+  } catch (err) {
+    console.warn('Could not read supplier payments from Firestore:', err);
+    return null;
+  }
+}
+
+export async function saveSupplierPaymentToFirestore(entry: SupplierPaymentEntry): Promise<boolean> {
+  if (!isFirebaseConfigured || !db) return false;
+  try {
+    const cleaned = sanitizeForFirestore(entry);
+    await setDoc(doc(db, COLLECTIONS.SUPPLIER_PAYMENTS, entry.id), cleaned, { merge: true });
+    return true;
+  } catch (err) {
+    console.error('Failed to save supplier payment to Firestore:', err);
+    return false;
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Share Events Tracker
+// -----------------------------------------------------------------------------
+export async function getShareEventsFromFirestore(): Promise<ShareEvent[] | null> {
+  if (!isFirebaseConfigured || !db) return null;
+  try {
+    const snap = await getDocs(collection(db, COLLECTIONS.SHARE_EVENTS));
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as ShareEvent);
+  } catch (err) {
+    console.warn('Could not read share events from Firestore:', err);
+    return null;
+  }
+}
+
+export async function saveShareEventToFirestore(event: ShareEvent): Promise<boolean> {
+  if (!isFirebaseConfigured || !db) return false;
+  try {
+    const cleaned = sanitizeForFirestore(event);
+    await setDoc(doc(db, COLLECTIONS.SHARE_EVENTS, event.id), cleaned, { merge: true });
+    return true;
+  } catch (err) {
+    console.error('Failed to save share event to Firestore:', err);
+    return false;
+  }
+}
+
+// -----------------------------------------------------------------------------
 // ONE-CLICK SYNC ALL MASTER DATA TO FIRESTORE
 // Automatically creates all collections on-the-fly!
 // -----------------------------------------------------------------------------
@@ -326,8 +522,12 @@ export async function syncAllMasterDataToFirestore(params: {
   vehicles: Vehicle[];
   tripTemplates: TripTemplate[];
   clausePresets: TripClausePreset[];
+  destinations?: Destination[];
+  suppliers?: Supplier[];
   leads?: Lead[];
   quotations?: Quotation[];
+  customerPayments?: CustomerPayment[];
+  supplierPayments?: SupplierPaymentEntry[];
 }): Promise<{
   success: boolean;
   message: string;
@@ -379,7 +579,23 @@ export async function syncAllMasterDataToFirestore(params: {
     }
     if (params.clausePresets.length > 0) collectionsWritten.push(COLLECTIONS.CLAUSE_PRESETS);
 
-    // 7. Leads (if any)
+    // 7. Destinations (collection: destinations)
+    if (params.destinations && params.destinations.length > 0) {
+      for (const d of params.destinations) {
+        await saveDestinationToFirestore(d);
+      }
+      collectionsWritten.push(COLLECTIONS.DESTINATIONS);
+    }
+
+    // 8. Suppliers (collection: suppliers)
+    if (params.suppliers && params.suppliers.length > 0) {
+      for (const s of params.suppliers) {
+        await saveSupplierToFirestore(s);
+      }
+      collectionsWritten.push(COLLECTIONS.SUPPLIERS);
+    }
+
+    // 9. Leads (if any)
     if (params.leads && params.leads.length > 0) {
       for (const l of params.leads) {
         await saveLeadToFirestore(l);
@@ -387,12 +603,28 @@ export async function syncAllMasterDataToFirestore(params: {
       collectionsWritten.push(COLLECTIONS.LEADS);
     }
 
-    // 8. Quotations (if any)
+    // 10. Quotations (if any)
     if (params.quotations && params.quotations.length > 0) {
       for (const q of params.quotations) {
         await saveQuotationToFirestore(q);
       }
       collectionsWritten.push(COLLECTIONS.QUOTATIONS);
+    }
+
+    // 11. Customer Payments (if any)
+    if (params.customerPayments && params.customerPayments.length > 0) {
+      for (const cp of params.customerPayments) {
+        await saveCustomerPaymentToFirestore(cp);
+      }
+      collectionsWritten.push(COLLECTIONS.CUSTOMER_PAYMENTS);
+    }
+
+    // 12. Supplier Payments (if any)
+    if (params.supplierPayments && params.supplierPayments.length > 0) {
+      for (const sp of params.supplierPayments) {
+        await saveSupplierPaymentToFirestore(sp);
+      }
+      collectionsWritten.push(COLLECTIONS.SUPPLIER_PAYMENTS);
     }
 
     return {

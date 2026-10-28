@@ -59,6 +59,18 @@ import {
   getAuthUsersFromFirestore,
   saveAuthUserToFirestore,
   deleteAuthUserFromFirestore,
+  getDestinationsFromFirestore,
+  saveDestinationToFirestore,
+  deleteDestinationFromFirestore,
+  getSuppliersFromFirestore,
+  saveSupplierToFirestore,
+  deleteSupplierFromFirestore,
+  getCustomerPaymentsFromFirestore,
+  saveCustomerPaymentToFirestore,
+  getSupplierPaymentsFromFirestore,
+  saveSupplierPaymentToFirestore,
+  getShareEventsFromFirestore,
+  saveShareEventToFirestore,
   syncAllMasterDataToFirestore,
 } from '../lib/firestoreService';
 import { isFirebaseConfigured } from '../lib/firebase';
@@ -299,8 +311,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             fsVehicles,
             fsTemplates,
             fsPresets,
+            fsDestinations,
+            fsSuppliers,
             fsLeads,
             fsQuotes,
+            fsCustomerPayments,
+            fsSupplierPayments,
+            fsShareEvents,
           ] = await Promise.all([
             getCompanySettingsFromFirestore(),
             getHotelsFromFirestore(),
@@ -308,49 +325,95 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             getVehiclesFromFirestore(),
             getTripTemplatesFromFirestore(),
             getClausePresetsFromFirestore(),
+            getDestinationsFromFirestore(),
+            getSuppliersFromFirestore(),
             getLeadsFromFirestore(),
             getQuotationsFromFirestore(),
+            getCustomerPaymentsFromFirestore(),
+            getSupplierPaymentsFromFirestore(),
+            getShareEventsFromFirestore(),
           ]);
 
-          // If database is completely empty (no settings and no hotels written yet), auto-seed!
-          const isFreshDatabase = !fsSettings && (!fsHotels || fsHotels.length === 0);
-
-          if (isFreshDatabase) {
-            console.log('⚡ Initializing & auto-seeding Cloud Firestore collections for Desi Journey...');
-            const seedRes = await syncAllMasterDataToFirestore({
-              companySettings: initialSettings,
-              authUsers: initialAuthUsers,
-              hotels: initialHotels,
-              vehicles: initialVehicles,
-              tripTemplates: initialTemplates,
-              clausePresets: initialPresets,
-              leads: initialLeadsList,
-              quotations: initialQuoteList,
-            });
-
-            if (isMounted) {
-              if (seedRes.success) {
-                setFirestoreStatus('connected');
-                setFirestoreError(null);
-              } else {
-                setFirestoreStatus('error');
-                setFirestoreError(seedRes.error || seedRes.message);
-              }
+          if (isMounted) {
+            // Settings
+            if (fsSettings) {
+              setCompanySettings(fsSettings);
+            } else {
+              saveCompanySettingsToFirestore(initialSettings).catch(console.error);
             }
-          } else {
-            // Firestore already has documents: sync from Firestore into state
-            if (isMounted) {
-              if (fsSettings) setCompanySettings(fsSettings);
-              if (fsHotels && fsHotels.length > 0) setHotels(fsHotels);
-              if (fsUsers && fsUsers.length > 0) setAuthUsers(fsUsers);
-              if (fsVehicles && fsVehicles.length > 0) setVehicles(fsVehicles);
-              if (fsTemplates && fsTemplates.length > 0) setTripTemplates(fsTemplates);
-              if (fsPresets && fsPresets.length > 0) setClausePresets(fsPresets);
-              if (fsLeads && fsLeads.length > 0) setLeads(fsLeads);
-              if (fsQuotes && fsQuotes.length > 0) setQuotations(fsQuotes);
-              setFirestoreStatus('connected');
-              setFirestoreError(null);
+
+            // Hotels
+            if (fsHotels && fsHotels.length > 0) {
+              setHotels(fsHotels);
+            } else {
+              initialHotels.forEach((h) => saveHotelToFirestore(h).catch(console.error));
             }
+
+            // Users
+            if (fsUsers && fsUsers.length > 0) {
+              setAuthUsers(fsUsers);
+            } else {
+              initialAuthUsers.forEach((u) => saveAuthUserToFirestore(u).catch(console.error));
+            }
+
+            // Vehicles
+            if (fsVehicles && fsVehicles.length > 0) {
+              setVehicles(fsVehicles);
+            } else {
+              initialVehicles.forEach((v) => saveVehicleToFirestore(v).catch(console.error));
+            }
+
+            // Trip Templates
+            if (fsTemplates && fsTemplates.length > 0) {
+              setTripTemplates(fsTemplates);
+            } else {
+              initialTemplates.forEach((t) => saveTripTemplateToFirestore(t).catch(console.error));
+            }
+
+            // Clause Presets
+            if (fsPresets && fsPresets.length > 0) {
+              setClausePresets(fsPresets);
+            } else {
+              initialPresets.forEach((p) => saveClausePresetToFirestore(p).catch(console.error));
+            }
+
+            // Destinations
+            if (fsDestinations && fsDestinations.length > 0) {
+              setDestinations(fsDestinations);
+            } else {
+              sampleDestinations.forEach((d) => saveDestinationToFirestore(d).catch(console.error));
+            }
+
+            // Suppliers
+            if (fsSuppliers && fsSuppliers.length > 0) {
+              setSuppliers(fsSuppliers);
+            } else {
+              sampleSuppliers.forEach((s) => saveSupplierToFirestore(s).catch(console.error));
+            }
+
+            // Leads
+            if (fsLeads && fsLeads.length > 0) {
+              setLeads(fsLeads);
+            }
+
+            // Quotations
+            if (fsQuotes && fsQuotes.length > 0) {
+              setQuotations(fsQuotes);
+            }
+
+            // Payments
+            if (fsCustomerPayments && fsCustomerPayments.length > 0) {
+              setCustomerPayments(fsCustomerPayments);
+            }
+            if (fsSupplierPayments && fsSupplierPayments.length > 0) {
+              setSupplierPayments(fsSupplierPayments);
+            }
+            if (fsShareEvents && fsShareEvents.length > 0) {
+              setShareEvents(fsShareEvents);
+            }
+
+            setFirestoreStatus('connected');
+            setFirestoreError(null);
           }
         } catch (err: any) {
           console.warn('Firestore sync note:', err);
@@ -464,8 +527,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       vehicles,
       tripTemplates,
       clausePresets,
+      destinations,
+      suppliers,
       leads,
       quotations,
+      customerPayments,
+      supplierPayments,
     });
     if (res.success) {
       setFirestoreStatus('connected');
@@ -487,8 +554,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         fsVehicles,
         fsTemplates,
         fsPresets,
+        fsDestinations,
+        fsSuppliers,
         fsLeads,
         fsQuotes,
+        fsCustomerPayments,
+        fsSupplierPayments,
+        fsShareEvents,
       ] = await Promise.all([
         getCompanySettingsFromFirestore(),
         getHotelsFromFirestore(),
@@ -496,8 +568,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         getVehiclesFromFirestore(),
         getTripTemplatesFromFirestore(),
         getClausePresetsFromFirestore(),
+        getDestinationsFromFirestore(),
+        getSuppliersFromFirestore(),
         getLeadsFromFirestore(),
         getQuotationsFromFirestore(),
+        getCustomerPaymentsFromFirestore(),
+        getSupplierPaymentsFromFirestore(),
+        getShareEventsFromFirestore(),
       ]);
       if (fsSettings) setCompanySettings(fsSettings);
       if (fsHotels && fsHotels.length > 0) setHotels(fsHotels);
@@ -505,8 +582,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (fsVehicles && fsVehicles.length > 0) setVehicles(fsVehicles);
       if (fsTemplates && fsTemplates.length > 0) setTripTemplates(fsTemplates);
       if (fsPresets && fsPresets.length > 0) setClausePresets(fsPresets);
+      if (fsDestinations && fsDestinations.length > 0) setDestinations(fsDestinations);
+      if (fsSuppliers && fsSuppliers.length > 0) setSuppliers(fsSuppliers);
       if (fsLeads && fsLeads.length > 0) setLeads(fsLeads);
       if (fsQuotes && fsQuotes.length > 0) setQuotations(fsQuotes);
+      if (fsCustomerPayments && fsCustomerPayments.length > 0) setCustomerPayments(fsCustomerPayments);
+      if (fsSupplierPayments && fsSupplierPayments.length > 0) setSupplierPayments(fsSupplierPayments);
+      if (fsShareEvents && fsShareEvents.length > 0) setShareEvents(fsShareEvents);
       setFirestoreStatus('connected');
       setFirestoreError(null);
     } catch (err: any) {
@@ -697,24 +779,37 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const addDestination = (dest: Destination) => {
     setDestinations((prev) => [dest, ...prev]);
+    saveDestinationToFirestore(dest).catch(console.error);
   };
 
   const updateDestination = (id: string, updates: Partial<Destination>) => {
-    setDestinations((prev) => prev.map((d) => (d.id === id ? { ...d, ...updates } : d)));
+    setDestinations((prev) =>
+      prev.map((d) => {
+        if (d.id === id) {
+          const updated = { ...d, ...updates };
+          saveDestinationToFirestore(updated).catch(console.error);
+          return updated;
+        }
+        return d;
+      })
+    );
   };
 
   const deleteDestination = (id: string) => {
     setDestinations((prev) => prev.filter((d) => d.id !== id));
+    deleteDestinationFromFirestore(id).catch(console.error);
   };
 
   const addAttraction = (destinationId: string, attraction: Attraction) => {
     setDestinations((prev) =>
       prev.map((d) => {
         if (d.id !== destinationId) return d;
-        return {
+        const updated = {
           ...d,
           attractions: [attraction, ...d.attractions],
         };
+        saveDestinationToFirestore(updated).catch(console.error);
+        return updated;
       })
     );
   };
@@ -723,10 +818,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setDestinations((prev) =>
       prev.map((d) => {
         if (d.id !== destinationId) return d;
-        return {
+        const updated = {
           ...d,
           attractions: d.attractions.map((a) => (a.id === attractionId ? { ...a, ...updates } : a)),
         };
+        saveDestinationToFirestore(updated).catch(console.error);
+        return updated;
       })
     );
   };
@@ -735,10 +832,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setDestinations((prev) =>
       prev.map((d) => {
         if (d.id !== destinationId) return d;
-        return {
+        const updated = {
           ...d,
           attractions: d.attractions.filter((a) => a.id !== attractionId),
         };
+        saveDestinationToFirestore(updated).catch(console.error);
+        return updated;
       })
     );
   };
@@ -789,7 +888,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       updatedAt: new Date().toISOString(),
     };
     setQuotations((prev) => [newQuote, ...prev]);
-    saveQuotationToFirestore(newQuote).catch(console.error);
+    saveQuotationToFirestore(newQuote)
+      .then((ok) => {
+        if (!ok) {
+          setFirestoreStatus('error');
+          setFirestoreError('Itinerary saved locally, but Cloud Firestore write was rejected (Missing permissions).');
+        } else {
+          setFirestoreStatus('connected');
+          setFirestoreError(null);
+        }
+      })
+      .catch((err) => {
+        setFirestoreStatus('error');
+        setFirestoreError(err?.message || 'Itinerary saved locally, but Cloud Firestore write failed.');
+      });
     return newQuote;
   };
 
@@ -798,7 +910,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       prev.map((q) => {
         if (q.id === id) {
           const updated = { ...q, ...updates, updatedAt: new Date().toISOString() };
-          saveQuotationToFirestore(updated).catch(console.error);
+          saveQuotationToFirestore(updated)
+            .then((ok) => {
+              if (!ok) {
+                setFirestoreStatus('error');
+                setFirestoreError('Itinerary updated locally, but Cloud Firestore update was rejected.');
+              } else {
+                setFirestoreStatus('connected');
+                setFirestoreError(null);
+              }
+            })
+            .catch((err) => {
+              setFirestoreStatus('error');
+              setFirestoreError(err?.message || 'Itinerary updated locally, but Cloud Firestore update failed.');
+            });
           return updated;
         }
         return q;
@@ -818,7 +943,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     setQuotations((prev) => [newVersion, ...prev]);
-    saveQuotationToFirestore(newVersion).catch(console.error);
+    saveQuotationToFirestore(newVersion)
+      .then((ok) => {
+        if (!ok) {
+          setFirestoreStatus('error');
+          setFirestoreError('Itinerary saved locally, but Cloud Firestore write was rejected.');
+        } else {
+          setFirestoreStatus('connected');
+          setFirestoreError(null);
+        }
+      })
+      .catch((err) => {
+        setFirestoreStatus('error');
+        setFirestoreError(err?.message || 'Itinerary saved locally, but Cloud Firestore write failed.');
+      });
     return newVersion;
   };
 
@@ -834,6 +972,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       timestamp: new Date().toISOString(),
     };
     setShareEvents((prev) => [newEvent, ...prev]);
+    saveShareEventToFirestore(newEvent).catch(console.error);
   };
 
   const recordSupplierPayment = (entryData: Omit<SupplierPaymentEntry, 'id'>) => {
@@ -842,6 +981,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       id: `spay-${Date.now()}`,
     };
     setSupplierPayments((prev) => [newEntry, ...prev]);
+    saveSupplierPaymentToFirestore(newEntry).catch(console.error);
 
     // Update supplier balance
     setSuppliers((prev) =>
@@ -849,7 +989,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (s.id !== entryData.supplierId) return s;
         const totalPaid = s.totalPaid + entryData.amount;
         const balanceOutstanding = Math.max(0, s.totalAgreedPayable - totalPaid);
-        return { ...s, totalPaid, balanceOutstanding };
+        const updatedSupplier = { ...s, totalPaid, balanceOutstanding };
+        saveSupplierToFirestore(updatedSupplier).catch(console.error);
+        return updatedSupplier;
       })
     );
   };
@@ -860,18 +1002,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       id: `cpay-${Date.now()}`,
     };
     setCustomerPayments((prev) => [newPayment, ...prev]);
+    saveCustomerPaymentToFirestore(newPayment).catch(console.error);
 
     // Update quotation advance received and status
     setQuotations((prev) =>
       prev.map((q) => {
         if (q.id !== paymentData.quoteId) return q;
         const newAdvance = q.advanceReceived + paymentData.amount;
-        return {
+        const updatedQuote: Quotation = {
           ...q,
           advanceReceived: newAdvance,
           status: newAdvance >= q.costing.advanceAmountRequired ? 'Confirmed' : q.status,
           updatedAt: new Date().toISOString(),
         };
+        saveQuotationToFirestore(updatedQuote).catch(console.error);
+        return updatedQuote;
       })
     );
   };

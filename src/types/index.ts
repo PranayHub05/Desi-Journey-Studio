@@ -293,6 +293,7 @@ export interface QuotationCustomization {
   showTermsAndPaymentSchedule: boolean;
   showBankDetails: boolean;
   showContactBar: boolean;
+  groupMultiDayStays?: boolean;
   templateStyle: 'alpine_classic' | 'modern_compact' | 'heritage_editorial';
 }
 

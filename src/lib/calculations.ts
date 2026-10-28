@@ -389,3 +389,91 @@ export function generateWhatsAppMessage(
 
   return `${greeting}\n\n${intro}\n\n${highlights}\n\n${link}\n\n${closing}`;
 }
+
+/**
+ * Interface representing a unified grouped stay section.
+ * Consecutive days in the same destination (e.g. 2 or 3 days in Manali)
+ * are consolidated into a single card containing all dates and sightseeing activities.
+ */
+export interface GroupedDaySection {
+  isMultiDay: boolean;
+  startDay: number;
+  endDay: number;
+  daysCount: number;
+  nightsCount: number;
+  startDate: string;
+  endDate: string;
+  destination: string;
+  hotelName?: string;
+  roomCategory?: string;
+  mealPlan?: string;
+  dayType?: string;
+  days: ItineraryDay[];
+}
+
+/**
+ * Group consecutive itinerary days that share the same destination/hotel into single sections.
+ * Departure days (e.g. airport/station transfers) remain separate.
+ */
+export function groupItineraryDaysByLocation(days: ItineraryDay[]): GroupedDaySection[] {
+  if (!days || days.length === 0) return [];
+
+  const groups: GroupedDaySection[] = [];
+  let currentGroup: GroupedDaySection | null = null;
+
+  for (let i = 0; i < days.length; i++) {
+    const day = days[i];
+    const dest = (day.hotelDestination || 'Destination').trim();
+    const isDeparture = day.dayType === 'Departure';
+
+    const canGroup =
+      currentGroup !== null &&
+      !isDeparture &&
+      currentGroup.dayType !== 'Departure' &&
+      currentGroup.destination.toLowerCase() === dest.toLowerCase();
+
+    if (canGroup && currentGroup) {
+      currentGroup.days.push(day);
+      currentGroup.endDay = day.dayNumber;
+      currentGroup.endDate = day.date;
+      currentGroup.daysCount = currentGroup.days.length;
+      currentGroup.nightsCount = currentGroup.days.length;
+      currentGroup.isMultiDay = true;
+      if (!currentGroup.hotelName && day.customHotelName) {
+        currentGroup.hotelName = day.customHotelName;
+      }
+      if (!currentGroup.roomCategory && day.roomCategory) {
+        currentGroup.roomCategory = day.roomCategory;
+      }
+      if (!currentGroup.mealPlan && day.mealPlan) {
+        currentGroup.mealPlan = day.mealPlan;
+      }
+    } else {
+      if (currentGroup) {
+        groups.push(currentGroup);
+      }
+      currentGroup = {
+        isMultiDay: false,
+        startDay: day.dayNumber,
+        endDay: day.dayNumber,
+        daysCount: 1,
+        nightsCount: isDeparture ? 0 : 1,
+        startDate: day.date,
+        endDate: day.date,
+        destination: dest,
+        hotelName: day.customHotelName,
+        roomCategory: day.roomCategory,
+        mealPlan: day.mealPlan,
+        dayType: day.dayType,
+        days: [day],
+      };
+    }
+  }
+
+  if (currentGroup) {
+    groups.push(currentGroup);
+  }
+
+  return groups;
+}
+

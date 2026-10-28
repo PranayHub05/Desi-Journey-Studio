@@ -12,6 +12,9 @@ import {
   Check,
   ChevronDown,
   LogOut,
+  Cloud,
+  AlertTriangle,
+  RefreshCw,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { UserRole } from '../../types';
@@ -23,6 +26,8 @@ export const TopNavbar: React.FC = () => {
     resetDemoData,
     setIsSearchOpen,
     logout,
+    firestoreStatus,
+    firestoreError,
   } = useApp();
 
   const [istTime, setIstTime] = useState<string>('');
@@ -94,6 +99,34 @@ export const TopNavbar: React.FC = () => {
 
         {/* Right Controls: IST Clock, Quick Create, User Account */}
         <div className="flex items-center gap-3">
+
+          {/* Cloud Database Sync Status */}
+          {firestoreStatus === 'connected' ? (
+            <div
+              className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-[11px] font-semibold text-emerald-800"
+              title="Cloud Database Synced: Real-time multi-device database active"
+            >
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span>Cloud Synced</span>
+            </div>
+          ) : firestoreStatus === 'syncing' ? (
+            <div
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-50 border border-amber-200 text-[11px] font-semibold text-amber-800"
+              title="Syncing with Cloud Firestore..."
+            >
+              <RefreshCw className="w-3 h-3 text-amber-600 animate-spin" />
+              <span>Syncing...</span>
+            </div>
+          ) : (
+            <Link
+              href="/settings#cloud-sync"
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-rose-50 border border-rose-300 text-[11px] font-bold text-rose-800 hover:bg-rose-100 transition-colors shadow-2xs"
+              title={firestoreError || 'Cloud Database Blocked: Click to view Firestore security rules fix'}
+            >
+              <AlertTriangle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+              <span>Cloud Blocked (Fix Rules)</span>
+            </Link>
+          )}
 
           {/* Live Indian Standard Time */}
           <div className="hidden lg:flex items-center gap-1.5 px-3 py-1 rounded-full bg-forest-50 border border-forest-100 text-[11px] font-medium text-forest-800">

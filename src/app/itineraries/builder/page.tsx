@@ -66,6 +66,8 @@ import {
   calculateVehicleTourCost,
   sanitizeQuotationForCustomer,
   generateWhatsAppMessage,
+  groupItineraryDaysByLocation,
+  GroupedDaySection,
 } from '../../../lib/calculations';
 
 function ItineraryBuilderContent() {
@@ -223,8 +225,12 @@ function ItineraryBuilderContent() {
     showTermsAndPaymentSchedule: true,
     showBankDetails: true,
     showContactBar: true,
+    groupMultiDayStays: true,
     templateStyle: 'alpine_classic',
   });
+
+  // Step 3 View Mode: 'individual' (editable cards) vs 'grouped' (consolidated multi-day view)
+  const [builderStep3View, setBuilderStep3View] = useState<'individual' | 'grouped'>('individual');
 
   const [savedSuccessMsg, setSavedSuccessMsg] = useState<string | null>(null);
 
@@ -706,6 +712,11 @@ function ItineraryBuilderContent() {
       )
     );
   };
+
+  // Consolidated multi-day stay groups for consecutive days at the same destination
+  const stayGroups = useMemo(() => {
+    return groupItineraryDaysByLocation(days);
+  }, [days]);
 
   const handleDuplicateDay = (dayIndex: number) => {
     const target = days[dayIndex];
@@ -1347,7 +1358,7 @@ function ItineraryBuilderContent() {
           {/* STEP 3: Day-wise Itinerary Editor */}
           {currentStep === 3 && (
             <div className="space-y-4">
-              <div className="flex items-center justify-between bg-white p-4 rounded-xl border border-stone-200 shadow-card">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 bg-white p-4 rounded-xl border border-stone-200 shadow-card">
                 <div>
                   <h2 className="text-sm font-bold text-forest-900">
                     Step 3: Day-wise Travel Timeline & Milestone Editor
@@ -1357,7 +1368,35 @@ function ItineraryBuilderContent() {
                   </p>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                  {/* Segmented View Switcher: Day-by-Day vs Grouped Stays */}
+                  <div className="flex items-center p-0.5 rounded-lg bg-stone-100 border border-stone-200">
+                    <button
+                      type="button"
+                      onClick={() => setBuilderStep3View('individual')}
+                      className={`px-2.5 py-1 rounded text-[11px] font-semibold transition-all ${
+                        builderStep3View === 'individual'
+                          ? 'bg-forest-800 text-white shadow-2xs'
+                          : 'text-stone-600 hover:text-stone-900'
+                      }`}
+                    >
+                      Day Editor ({days.length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setBuilderStep3View('grouped')}
+                      className={`px-2.5 py-1 rounded text-[11px] font-semibold flex items-center gap-1 transition-all ${
+                        builderStep3View === 'grouped'
+                          ? 'bg-amber-600 text-white shadow-2xs'
+                          : 'text-stone-600 hover:text-stone-900'
+                      }`}
+                      title="View consolidated multi-day stay sections"
+                    >
+                      <Layers className="w-3 h-3" />
+                      <span>Grouped Stays ({stayGroups.length})</span>
+                    </button>
+                  </div>
+
                   <button
                     type="button"
                     onClick={() => {
@@ -1367,7 +1406,7 @@ function ItineraryBuilderContent() {
                     className="px-3 py-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-900 font-bold text-xs flex items-center gap-1.5 shadow-2xs transition-colors"
                   >
                     <Sparkles className="w-3.5 h-3.5 text-amber-600" />
-                    <span>✨ AI Generate Schedule</span>
+                    <span>✨ AI Generate</span>
                   </button>
 
                   <button
@@ -1396,47 +1435,164 @@ function ItineraryBuilderContent() {
                     className="px-3 py-1.5 rounded-lg bg-forest-800 hover:bg-forest-700 text-white font-medium text-xs flex items-center gap-1"
                   >
                     <Plus className="w-3.5 h-3.5" />
-                    <span>Add Extra Day</span>
+                    <span>Add Day</span>
                   </button>
                 </div>
               </div>
 
-              {/* Day Cards List */}
-              <div className="space-y-4">
-                {days.map((day, dayIndex) => (
-                  <div
-                    key={day.id}
-                    className="bg-white rounded-2xl border border-stone-200 shadow-card overflow-hidden text-xs"
-                  >
-                    {/* Day Header Ribbon */}
-                    <div className="bg-stone-50 p-4 border-b border-stone-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                      <div className="flex items-center gap-3">
-                        <span className="w-7 h-7 rounded-lg bg-forest-800 text-gold-400 font-bold text-xs flex items-center justify-center shadow-2xs">
-                          D{day.dayNumber}
-                        </span>
-                        <div>
-                          <div className="font-bold text-forest-900 text-xs flex items-center gap-2">
-                            <input
-                              type="date"
-                              value={day.date}
-                              onChange={(e) => {
-                                const newD = e.target.value;
-                                if (!newD) return;
-                                if (dayIndex === 0) {
-                                  handleStartDateChange(newD);
-                                } else {
-                                  handleUpdateDay(dayIndex, { date: newD });
-                                }
-                              }}
-                              className="px-2 py-0.5 rounded-md border border-stone-300 bg-white text-xs font-semibold text-forest-900 shadow-2xs outline-hidden focus:border-forest-600"
-                              title={dayIndex === 0 ? 'Changing Day 1 date shifts the entire trip timeline sequentially' : `Set date for Day ${day.dayNumber}`}
-                            />
-                            <span className="text-stone-400">•</span>
-                            <span className="text-emerald-700">{day.dayType}</span>
+              {builderStep3View === 'grouped' ? (
+                <div className="space-y-4">
+                  <div className="p-3.5 bg-amber-50/80 border border-amber-200 rounded-xl text-xs text-amber-900 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <Layers className="w-4 h-4 text-amber-700 shrink-0" />
+                      <span>
+                        <strong>Consolidated Multi-Day Stay Preview:</strong> Consecutive days in the same destination are consolidated into one unified section with day-wise sightseeing details.
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setBuilderStep3View('individual')}
+                      className="text-[11px] font-bold text-amber-800 underline hover:text-amber-900 whitespace-nowrap self-start sm:self-auto"
+                    >
+                      Edit Individual Days →
+                    </button>
+                  </div>
+
+                  {stayGroups.map((grp, gIdx) => (
+                    <div
+                      key={`builder-stay-${gIdx}`}
+                      className="bg-white rounded-2xl border-2 border-stone-200 hover:border-forest-600/40 transition-all p-5 shadow-card space-y-4 text-xs"
+                    >
+                      {/* Section Header */}
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-stone-200">
+                        <div className="flex items-center gap-3">
+                          <span className="px-3 py-1.5 rounded-xl bg-forest-800 text-gold-400 font-bold text-xs shadow-2xs whitespace-nowrap">
+                            {grp.isMultiDay ? `Day ${grp.startDay} – Day ${grp.endDay}` : `Day ${grp.startDay}`}
+                          </span>
+                          <div>
+                            <h3 className="font-bold text-forest-900 text-sm flex items-center gap-2 flex-wrap">
+                              <span>{grp.destination} {grp.isMultiDay ? 'Stay & Exploration' : grp.dayType}</span>
+                              <span className="text-[10px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                                {grp.daysCount} {grp.daysCount === 1 ? 'Day' : 'Days'} • {grp.nightsCount} {grp.nightsCount === 1 ? 'Night' : 'Nights'} Stay
+                              </span>
+                            </h3>
+                            <div className="text-[11px] text-stone-500 mt-0.5">
+                              {formatIndianDate(grp.startDate)} {grp.isMultiDay ? `to ${formatIndianDate(grp.endDate)}` : ''}
+                            </div>
                           </div>
-                          <div className="text-[11px] text-stone-500">{day.routeTitle}</div>
+                        </div>
+
+                        <div className="flex items-center gap-2 self-start sm:self-auto">
+                          {grp.mealPlan && (
+                            <span className="text-[10px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-lg">
+                              Meal Plan: {grp.mealPlan}
+                            </span>
+                          )}
                         </div>
                       </div>
+
+                      {/* Day wise activities inside stay */}
+                      <div className="space-y-3">
+                        <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wider block">
+                          Day-Wise Sightseeing &amp; Schedule Details:
+                        </span>
+                        {grp.days.map((day) => (
+                          <div key={day.id} className="p-3 bg-stone-50 rounded-xl border border-stone-200 space-y-2">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                              <div className="flex items-center gap-2">
+                                <span className="font-bold text-forest-900 text-xs">
+                                  Day {day.dayNumber}: {day.title}
+                                </span>
+                                <span className="text-[10px] text-stone-500 font-medium">({formatIndianDate(day.date)})</span>
+                              </div>
+                              <span className="text-[11px] text-stone-600 font-medium">{day.routeTitle}</span>
+                            </div>
+
+                            {day.activities.length > 0 ? (
+                              <div className="space-y-1 pl-2">
+                                {day.activities.map((act) => (
+                                  <div key={act.id} className="text-[11px] text-stone-700 flex items-start gap-1.5">
+                                    <span className="text-emerald-700 font-bold mt-0.5">✓</span>
+                                    <div>
+                                      <strong>{act.title}: </strong>
+                                      <span>{act.description}</span>
+                                      {act.timeSlot && <span className="text-stone-400 font-mono ml-1">({act.timeSlot})</span>}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <p className="text-[11px] text-stone-400 italic pl-2">Leisure exploration &amp; sightseeing at own pace.</p>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Hotel Stay Accommodation Tag */}
+                      {grp.hotelName && (
+                        <div className="p-3 rounded-xl bg-forest-900/5 border border-forest-900/10 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <HotelIcon className="w-4 h-4 text-forest-800" />
+                            <span className="text-xs text-stone-800">
+                              Overnight Accommodation ({grp.nightsCount}N): <strong className="text-forest-900">{grp.hotelName}</strong> ({grp.destination})
+                            </span>
+                          </div>
+                          <span className="text-[11px] font-semibold text-stone-600">
+                            {grp.roomCategory || 'Deluxe Room'} • {grp.mealPlan}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                /* Day Cards List (Individual Editor) */
+                <div className="space-y-4">
+                  {days.map((day, dayIndex) => {
+                    const grp = stayGroups.find((g) => g.days.some((d) => d.id === day.id));
+                    const isMulti = grp && grp.isMultiDay;
+                    const idxInGrp = grp ? grp.days.findIndex((d) => d.id === day.id) + 1 : 1;
+
+                    return (
+                      <div
+                        key={day.id}
+                        className="bg-white rounded-2xl border border-stone-200 shadow-card overflow-hidden text-xs"
+                      >
+                        {/* Day Header Ribbon */}
+                        <div className="bg-stone-50 p-4 border-b border-stone-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                          <div className="flex items-center gap-3">
+                            <span className="w-7 h-7 rounded-lg bg-forest-800 text-gold-400 font-bold text-xs flex items-center justify-center shadow-2xs">
+                              D{day.dayNumber}
+                            </span>
+                            <div>
+                              <div className="font-bold text-forest-900 text-xs flex items-center gap-2 flex-wrap">
+                                <input
+                                  type="date"
+                                  value={day.date}
+                                  onChange={(e) => {
+                                    const newD = e.target.value;
+                                    if (!newD) return;
+                                    if (dayIndex === 0) {
+                                      handleStartDateChange(newD);
+                                    } else {
+                                      handleUpdateDay(dayIndex, { date: newD });
+                                    }
+                                  }}
+                                  className="px-2 py-0.5 rounded-md border border-stone-300 bg-white text-xs font-semibold text-forest-900 shadow-2xs outline-hidden focus:border-forest-600"
+                                  title={dayIndex === 0 ? 'Changing Day 1 date shifts the entire trip timeline sequentially' : `Set date for Day ${day.dayNumber}`}
+                                />
+                                <span className="text-stone-400">•</span>
+                                <span className="text-emerald-700">{day.dayType}</span>
+                                {isMulti && (
+                                  <span className="px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-300 font-bold text-[10px] flex items-center gap-1 shadow-2xs">
+                                    <HotelIcon className="w-3 h-3 text-amber-700" />
+                                    <span>{grp.destination} Stay (Day {idxInGrp} of {grp.daysCount})</span>
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-[11px] text-stone-500">{day.routeTitle}</div>
+                            </div>
+                          </div>
 
                       <div className="flex items-center gap-2">
                         <select
@@ -1624,10 +1780,12 @@ function ItineraryBuilderContent() {
                       </div>
                     </div>
                   </div>
-                ))}
-              </div>
+                );
+              })}
             </div>
           )}
+        </div>
+      )}
 
           {/* STEP 4: Hotels & Accommodation */}
           {currentStep === 4 && (
@@ -2182,6 +2340,41 @@ function ItineraryBuilderContent() {
                   </button>
                 </div>
               </div>
+
+              {/* Proposal Presentation & Stay Grouping Preferences */}
+              <div className="pt-4 border-t border-stone-100 space-y-3">
+                <div className="font-bold text-forest-900 flex items-center gap-1.5">
+                  <Layers className="w-4 h-4 text-forest-600" />
+                  <span>Proposal Layout &amp; Multi-Day Stay Display Preference</span>
+                </div>
+                <div className="p-4 rounded-xl bg-stone-50 border border-stone-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <strong className="text-forest-900 text-xs block">
+                      Consolidate Multi-Day Stays in Itinerary
+                    </strong>
+                    <p className="text-[11px] text-stone-500 mt-0.5">
+                      When enabled, consecutive days in the same destination (e.g., 2 or 3 days in Manali) are displayed as a single unified section with all sightseeing details rather than separate day cards.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setCustomization((prev) => ({
+                        ...prev,
+                        groupMultiDayStays: prev.groupMultiDayStays === false ? true : false,
+                      }))
+                    }
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 border transition-all shrink-0 ${
+                      customization.groupMultiDayStays !== false
+                        ? 'bg-amber-100 text-amber-900 border-amber-300 shadow-2xs'
+                        : 'bg-white text-stone-600 border-stone-200'
+                    }`}
+                  >
+                    <Layers className="w-3.5 h-3.5 text-amber-700" />
+                    <span>{customization.groupMultiDayStays !== false ? 'Enabled (Grouped)' : 'Disabled (Split)'}</span>
+                  </button>
+                </div>
+              </div>
             </div>
           )}
 
@@ -2336,49 +2529,189 @@ function ItineraryBuilderContent() {
 
                 {/* Day-by-Day Proposal List */}
                 <div className="space-y-3">
-                  <h4 className="font-bold text-forest-900 text-xs uppercase tracking-wider">
-                    Day-Wise Curated Itinerary
-                  </h4>
-                  {sanitizedQuote.days.map((d) => (
-                    <div
-                      key={d.id}
-                      className="bg-white p-4 rounded-xl border border-stone-200 shadow-2xs space-y-2"
+                  <div className="flex items-center justify-between pb-1">
+                    <h4 className="font-bold text-forest-900 text-xs uppercase tracking-wider">
+                      Day-Wise Curated Itinerary
+                    </h4>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setCustomization((prev) => ({
+                          ...prev,
+                          groupMultiDayStays: prev.groupMultiDayStays === false ? true : false,
+                        }))
+                      }
+                      className={`text-[11px] font-semibold px-2.5 py-1 rounded-lg border flex items-center gap-1.5 transition-all ${
+                        customization.groupMultiDayStays !== false
+                          ? 'bg-amber-50 text-amber-900 border-amber-300 shadow-2xs'
+                          : 'bg-white text-stone-600 border-stone-200 hover:bg-stone-50'
+                      }`}
+                      title="Toggle consolidating consecutive stays in the same destination into one section"
                     >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <span className="w-5 h-5 rounded bg-forest-800 text-gold-400 text-[10px] font-bold flex items-center justify-center">
-                            D{d.dayNumber}
-                          </span>
-                          <span className="font-bold text-forest-900 text-xs">{d.title}</span>
-                        </div>
-                        <span className="text-[10px] text-stone-500 font-medium">{formatIndianDate(d.date)}</span>
-                      </div>
+                      <Layers className="w-3.5 h-3.5 text-amber-600" />
+                      <span>{customization.groupMultiDayStays !== false ? 'Multi-Day Stays Grouped' : 'Day-by-Day Split'}</span>
+                    </button>
+                  </div>
 
-                      <div className="text-[11px] text-stone-600">{d.routeTitle}</div>
-
-                      {/* Display Hotel Name (Masked or Disclosed) */}
-                      {d.customHotelName && d.dayType !== 'Departure' && (
-                        <div className="p-2 rounded bg-stone-50 text-[11px] flex items-center gap-2 font-medium text-forest-900">
-                          <HotelIcon className="w-3.5 h-3.5 text-forest-600 flex-shrink-0" />
-                          <span>
-                            Stay: <strong>{d.customHotelName}</strong> ({d.mealPlan})
-                          </span>
-                        </div>
-                      )}
-
-                      {/* Activities */}
-                      {d.activities.length > 0 && (
-                        <div className="space-y-1 pt-1">
-                          {d.activities.map((a) => (
-                            <div key={a.id} className="text-[11px] text-stone-600 pl-3 border-l-2 border-emerald-500">
-                              <span className="font-semibold text-stone-800">{a.timeSlot ? `${a.timeSlot} — ` : ''}{a.title}: </span>
-                              <span>{a.description}</span>
+                  {customization.groupMultiDayStays !== false ? (
+                    groupItineraryDaysByLocation(sanitizedQuote.days).map((group, grpIdx) => {
+                      if (group.isMultiDay) {
+                        return (
+                          <div
+                            key={`preview-grp-${grpIdx}`}
+                            className="bg-white p-4 rounded-xl border-2 border-stone-200 shadow-2xs space-y-3"
+                          >
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-stone-200">
+                              <div className="flex items-center gap-2.5">
+                                <span className="px-2.5 py-1 rounded-lg bg-forest-800 text-gold-400 font-bold text-xs shadow-2xs">
+                                  Day {group.startDay} – Day {group.endDay}
+                                </span>
+                                <div>
+                                  <strong className="text-forest-900 text-xs">
+                                    {group.destination} Stay &amp; Exploration
+                                  </strong>
+                                  <div className="text-[10px] text-stone-500">
+                                    {formatIndianDate(group.startDate)} to {formatIndianDate(group.endDate)} • {group.daysCount} Days / {group.nightsCount} Nights
+                                  </div>
+                                </div>
+                              </div>
+                              {group.mealPlan && (
+                                <span className="text-[10px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded">
+                                  {group.mealPlan} Plan
+                                </span>
+                              )}
                             </div>
-                          ))}
+
+                            {/* Sightseeing details for each day */}
+                            <div className="space-y-2">
+                              {group.days.map((day) => (
+                                <div key={day.id} className="p-2.5 rounded-lg bg-stone-50/80 border border-stone-200/60 space-y-1">
+                                  <div className="flex items-center justify-between text-[11px]">
+                                    <span className="font-bold text-stone-900">
+                                      Day {day.dayNumber}: {day.title}
+                                    </span>
+                                    <span className="text-stone-500 font-medium">
+                                      {formatIndianDate(day.date)}
+                                    </span>
+                                  </div>
+                                  {day.routeTitle && (
+                                    <div className="text-[10px] text-stone-500">{day.routeTitle}</div>
+                                  )}
+                                  {day.activities.length > 0 && (
+                                    <div className="space-y-1 pt-1">
+                                      {day.activities.map((a) => (
+                                        <div key={a.id} className="text-[11px] text-stone-600 pl-2.5 border-l-2 border-emerald-500">
+                                          <span className="font-semibold text-stone-800">{a.timeSlot ? `${a.timeSlot} — ` : ''}{a.title}: </span>
+                                          <span>{a.description}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+
+                            {/* Stay accommodation details */}
+                            {group.hotelName && (
+                              <div className="p-2.5 rounded-lg bg-stone-50 text-[11px] flex items-center justify-between text-stone-800">
+                                <div className="flex items-center gap-2">
+                                  <HotelIcon className="w-3.5 h-3.5 text-forest-600 flex-shrink-0" />
+                                  <span>
+                                    Stay ({group.nightsCount} Nights): <strong>{group.hotelName}</strong> ({group.destination})
+                                  </span>
+                                </div>
+                                <span className="text-[10px] font-semibold text-stone-500">
+                                  {group.roomCategory || 'Deluxe Room'} • {group.mealPlan}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      }
+
+                      // Single day
+                      const single = group.days[0];
+                      return (
+                        <div
+                          key={single.id}
+                          className="bg-white p-4 rounded-xl border border-stone-200 shadow-2xs space-y-2"
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <span className="w-5 h-5 rounded bg-forest-800 text-gold-400 text-[10px] font-bold flex items-center justify-center">
+                                D{single.dayNumber}
+                              </span>
+                              <span className="font-bold text-forest-900 text-xs">{single.title}</span>
+                            </div>
+                            <span className="text-[10px] text-stone-500 font-medium">{formatIndianDate(single.date)}</span>
+                          </div>
+
+                          <div className="text-[11px] text-stone-600">{single.routeTitle}</div>
+
+                          {single.customHotelName && single.dayType !== 'Departure' && (
+                            <div className="p-2 rounded bg-stone-50 text-[11px] flex items-center gap-2 font-medium text-forest-900">
+                              <HotelIcon className="w-3.5 h-3.5 text-forest-600 flex-shrink-0" />
+                              <span>
+                                Stay: <strong>{single.customHotelName}</strong> ({single.mealPlan})
+                              </span>
+                            </div>
+                          )}
+
+                          {single.activities.length > 0 && (
+                            <div className="space-y-1 pt-1">
+                              {single.activities.map((a) => (
+                                <div key={a.id} className="text-[11px] text-stone-600 pl-3 border-l-2 border-emerald-500">
+                                  <span className="font-semibold text-stone-800">{a.timeSlot ? `${a.timeSlot} — ` : ''}{a.title}: </span>
+                                  <span>{a.description}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </div>
-                  ))}
+                      );
+                    })
+                  ) : (
+                    sanitizedQuote.days.map((d) => (
+                      <div
+                        key={d.id}
+                        className="bg-white p-4 rounded-xl border border-stone-200 shadow-2xs space-y-2"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="w-5 h-5 rounded bg-forest-800 text-gold-400 text-[10px] font-bold flex items-center justify-center">
+                              D{d.dayNumber}
+                            </span>
+                            <span className="font-bold text-forest-900 text-xs">{d.title}</span>
+                          </div>
+                          <span className="text-[10px] text-stone-500 font-medium">{formatIndianDate(d.date)}</span>
+                        </div>
+
+                        <div className="text-[11px] text-stone-600">{d.routeTitle}</div>
+
+                        {/* Display Hotel Name (Masked or Disclosed) */}
+                        {d.customHotelName && d.dayType !== 'Departure' && (
+                          <div className="p-2 rounded bg-stone-50 text-[11px] flex items-center gap-2 font-medium text-forest-900">
+                            <HotelIcon className="w-3.5 h-3.5 text-forest-600 flex-shrink-0" />
+                            <span>
+                              Stay: <strong>{d.customHotelName}</strong> ({d.mealPlan})
+                            </span>
+                          </div>
+                        )}
+
+                        {/* Activities */}
+                        {d.activities.length > 0 && (
+                          <div className="space-y-1 pt-1">
+                            {d.activities.map((a) => (
+                              <div key={a.id} className="text-[11px] text-stone-600 pl-3 border-l-2 border-emerald-500">
+                                <span className="font-semibold text-stone-800">{a.timeSlot ? `${a.timeSlot} — ` : ''}{a.title}: </span>
+                                <span>{a.description}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ))
+                  )}
                 </div>
 
                 {/* Customer Price & Payment Box */}
