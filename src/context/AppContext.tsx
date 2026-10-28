@@ -41,6 +41,7 @@ import {
   getLeadsFromFirestore,
   saveLeadToFirestore,
   deleteLeadFromFirestore,
+  subscribeToLeads,
   getHotelsFromFirestore,
   saveHotelToFirestore,
   deleteHotelFromFirestore,
@@ -56,6 +57,7 @@ import {
   getQuotationsFromFirestore,
   saveQuotationToFirestore,
   deleteQuotationFromFirestore,
+  subscribeToQuotations,
   getAuthUsersFromFirestore,
   saveAuthUserToFirestore,
   deleteAuthUserFromFirestore,
@@ -391,14 +393,44 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               sampleSuppliers.forEach((s) => saveSupplierToFirestore(s).catch(console.error));
             }
 
-            // Leads
-            if (fsLeads && fsLeads.length > 0) {
-              setLeads(fsLeads);
+            // Leads (Automatic two-way reconcile & cloud sync)
+            const fsLeadMap = new Map((fsLeads || []).map((l) => [l.id, l]));
+            const mergedLeads = [...(fsLeads || [])];
+            if (initialLeadsList && initialLeadsList.length > 0) {
+              initialLeadsList.forEach((localLead) => {
+                if (!fsLeadMap.has(localLead.id)) {
+                  mergedLeads.push(localLead);
+                  saveLeadToFirestore(localLead).catch((err) =>
+                    console.warn('Auto-sync lead to Firestore error:', err)
+                  );
+                }
+              });
+            }
+            mergedLeads.sort(
+              (a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
+            );
+            if (mergedLeads.length > 0) {
+              setLeads(mergedLeads);
             }
 
-            // Quotations
-            if (fsQuotes && fsQuotes.length > 0) {
-              setQuotations(fsQuotes);
+            // Quotations (Automatic two-way reconcile & cloud sync)
+            const fsQuoteMap = new Map((fsQuotes || []).map((q) => [q.id, q]));
+            const mergedQuotes = [...(fsQuotes || [])];
+            if (initialQuoteList && initialQuoteList.length > 0) {
+              initialQuoteList.forEach((localQuote) => {
+                if (!fsQuoteMap.has(localQuote.id)) {
+                  mergedQuotes.push(localQuote);
+                  saveQuotationToFirestore(localQuote).catch((err) =>
+                    console.warn('Auto-sync quotation to Firestore error:', err)
+                  );
+                }
+              });
+            }
+            mergedQuotes.sort(
+              (a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
+            );
+            if (mergedQuotes.length > 0) {
+              setQuotations(mergedQuotes);
             }
 
             // Payments
@@ -431,6 +463,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       isMounted = false;
     };
   }, []);
+
+  // Automatic Real-Time Cloud Listeners across all agency devices
+  useEffect(() => {
+    if (!isFirebaseConfigured || !isHydrated) return;
+
+    const unsubQuotes = subscribeToQuotations((latestQuotes) => {
+      if (latestQuotes && latestQuotes.length > 0) {
+        setQuotations(latestQuotes);
+      }
+    });
+
+    const unsubLeads = subscribeToLeads((latestLeads) => {
+      if (latestLeads && latestLeads.length > 0) {
+        setLeads(latestLeads);
+      }
+    });
+
+    return () => {
+      unsubQuotes();
+      unsubLeads();
+    };
+  }, [isHydrated]);
 
   // Save to LocalStorage whenever state updates
   useEffect(() => {

@@ -7,6 +7,7 @@ import {
   deleteDoc,
   query,
   orderBy,
+  onSnapshot,
 } from 'firebase/firestore';
 import { db, isFirebaseConfigured } from './firebase';
 import {
@@ -134,6 +135,36 @@ export async function deleteLeadFromFirestore(id: string): Promise<boolean> {
   }
 }
 
+/**
+ * Real-time listener for leads across all agency devices.
+ */
+export function subscribeToLeads(
+  callback: (leads: Lead[]) => void,
+  onError?: (err: Error) => void
+): () => void {
+  if (!isFirebaseConfigured || !db) return () => {};
+  try {
+    const unsub = onSnapshot(
+      collection(db, COLLECTIONS.LEADS),
+      (snap) => {
+        const leads = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Lead);
+        const sorted = leads.sort(
+          (a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
+        );
+        callback(sorted);
+      },
+      (err) => {
+        console.warn('Realtime leads snapshot listener error:', err);
+        if (onError) onError(err);
+      }
+    );
+    return unsub;
+  } catch (err: any) {
+    console.warn('Could not subscribe to leads:', err);
+    return () => {};
+  }
+}
+
 // -----------------------------------------------------------------------------
 // Quotations & Proposals
 // -----------------------------------------------------------------------------
@@ -171,6 +202,37 @@ export async function deleteQuotationFromFirestore(id: string): Promise<boolean>
   } catch (err) {
     console.error('Failed to delete quotation from Firestore:', err);
     return false;
+  }
+}
+
+/**
+ * Real-time listener for quotations across all agency devices.
+ * Automatically synchronizes changes from any laptop in real time.
+ */
+export function subscribeToQuotations(
+  callback: (quotes: Quotation[]) => void,
+  onError?: (err: Error) => void
+): () => void {
+  if (!isFirebaseConfigured || !db) return () => {};
+  try {
+    const unsub = onSnapshot(
+      collection(db, COLLECTIONS.QUOTATIONS),
+      (snap) => {
+        const quotes = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Quotation);
+        const sorted = quotes.sort(
+          (a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
+        );
+        callback(sorted);
+      },
+      (err) => {
+        console.warn('Realtime quotations snapshot listener error:', err);
+        if (onError) onError(err);
+      }
+    );
+    return unsub;
+  } catch (err: any) {
+    console.warn('Could not subscribe to quotations:', err);
+    return () => {};
   }
 }
 

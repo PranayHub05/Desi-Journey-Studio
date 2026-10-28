@@ -27,12 +27,6 @@ import {
   X,
   Loader2,
   AlertTriangle,
-  Cloud,
-  Database,
-  Copy,
-  Check,
-  ExternalLink,
-  RefreshCw,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { AuthUser } from '../../types';
@@ -48,12 +42,6 @@ export default function SettingsPage() {
     updateAuthUser,
     createAuthUser,
     deleteAuthUser,
-    firestoreStatus,
-    firestoreError,
-    syncToFirestore,
-    refreshFromFirestore,
-    quotations,
-    leads,
   } = useApp();
 
   const [formData, setFormData] = useState(companySettings);
@@ -62,56 +50,6 @@ export default function SettingsPage() {
   const [showApiKey, setShowApiKey] = useState(false);
   const [isTestingApi, setIsTestingApi] = useState(false);
   const [apiTestResult, setApiTestResult] = useState<{ success: boolean; message: string } | null>(null);
-
-  // Cloud Firestore Sync State
-  const [isSyncingCloud, setIsSyncingCloud] = useState(false);
-  const [cloudSyncMsg, setCloudSyncMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const [copiedRules, setCopiedRules] = useState(false);
-
-  const handleSyncToCloud = async () => {
-    setIsSyncingCloud(true);
-    setCloudSyncMsg(null);
-    try {
-      const res = await syncToFirestore();
-      if (res.success) {
-        setCloudSyncMsg({
-          type: 'success',
-          text: `Success! Synced ${res.collectionsWritten?.length || 0} collections (${quotations.length} itineraries, ${leads.length} leads) to Cloud Firestore!`,
-        });
-      } else {
-        setCloudSyncMsg({
-          type: 'error',
-          text: res.error || 'Failed to sync. Please ensure Firestore Security Rules allow read/write in Firebase Console.',
-        });
-      }
-    } catch (err: any) {
-      setCloudSyncMsg({
-        type: 'error',
-        text: err?.message || 'Sync failed. Check Firebase console rules.',
-      });
-    } finally {
-      setIsSyncingCloud(false);
-    }
-  };
-
-  const handleRefreshFromCloud = async () => {
-    setIsSyncingCloud(true);
-    setCloudSyncMsg(null);
-    try {
-      await refreshFromFirestore();
-      setCloudSyncMsg({
-        type: 'success',
-        text: 'Reloaded all latest data from Cloud Firestore successfully!',
-      });
-    } catch (err: any) {
-      setCloudSyncMsg({
-        type: 'error',
-        text: err?.message || 'Failed to reload from Cloud Firestore.',
-      });
-    } finally {
-      setIsSyncingCloud(false);
-    }
-  };
 
   // User management state
   const [editingUser, setEditingUser] = useState<AuthUser | null>(null);
@@ -218,168 +156,6 @@ export default function SettingsPage() {
             <span>Export Backup</span>
           </button>
         </div>
-      </div>
-
-      {/* CLOUD DATABASE & MULTI-DEVICE SYNC (FIRESTORE) */}
-      <div id="cloud-sync" className="bg-white p-6 rounded-2xl border-2 border-stone-200 shadow-card space-y-5 text-xs">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-stone-100">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-forest-800 text-gold-400 flex items-center justify-center shrink-0">
-              <Database className="w-4 h-4" />
-            </div>
-            <div>
-              <h2 className="text-sm font-bold text-forest-900">
-                Cloud Database &amp; Multi-Device Synchronization (Firestore)
-              </h2>
-              <p className="text-[11px] text-stone-500">
-                Project ID: <strong className="font-mono text-forest-800">desijourneystudio</strong> • Syncs all itineraries, leads, hotels, and payments across all agency laptops.
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            {firestoreStatus === 'connected' ? (
-              <span className="px-3 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 font-bold text-[11px] flex items-center gap-1.5 shadow-2xs">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                <span>Connected &amp; Synced</span>
-              </span>
-            ) : firestoreStatus === 'syncing' ? (
-              <span className="px-3 py-1 rounded-full bg-amber-50 text-amber-800 border border-amber-200 font-bold text-[11px] flex items-center gap-1.5">
-                <RefreshCw className="w-3 h-3 text-amber-600 animate-spin" />
-                <span>Syncing Database...</span>
-              </span>
-            ) : (
-              <span className="px-3 py-1 rounded-full bg-rose-50 text-rose-800 border border-rose-300 font-bold text-[11px] flex items-center gap-1.5 shadow-2xs">
-                <AlertTriangle className="w-3.5 h-3.5 text-rose-600" />
-                <span>Writes Blocked (Permission Denied)</span>
-              </span>
-            )}
-          </div>
-        </div>
-
-        {/* Why another laptop shows nothing explanation */}
-        <div className="p-4 rounded-xl bg-amber-50/70 border border-amber-200/90 text-amber-950 space-y-2">
-          <div className="font-bold flex items-center gap-1.5 text-xs text-amber-900">
-            <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0" />
-            <span>Why did your itinerary show on one laptop, but nothing showed on another laptop?</span>
-          </div>
-          <p className="text-[11px] leading-relaxed text-amber-900">
-            When you create an itinerary on Laptop A, the browser saves a local copy in <strong>localStorage</strong> (so you can view it even offline), and also attempts to upload it to <strong>Cloud Firestore</strong>. If your Firestore Security Rules in Firebase Console are set to <code className="bg-amber-100 px-1 py-0.5 rounded font-mono text-[10px]">allow write: if false;</code> or require Firebase Auth tokens, the cloud upload is blocked by Firestore. As a result, the itinerary exists <em>only</em> on Laptop A&apos;s local browser storage. When Laptop B opens the website, it asks Cloud Firestore for data and finds 0 records.
-          </p>
-        </div>
-
-        {/* Step-by-Step Fix */}
-        <div className="p-4 rounded-xl bg-stone-50 border border-stone-200 space-y-3">
-          <div className="flex items-center justify-between flex-wrap gap-2">
-            <span className="font-bold text-forest-900 text-xs">
-              How to Fix in 10 Seconds (Firebase Console Rules):
-            </span>
-            <a
-              href="https://console.firebase.google.com/project/desijourneystudio/firestore/rules"
-              target="_blank"
-              rel="noreferrer"
-              className="text-[11px] font-bold text-forest-700 hover:text-forest-900 hover:underline flex items-center gap-1"
-            >
-              <span>Open Firebase Console Rules Tab</span>
-              <ExternalLink className="w-3 h-3" />
-            </a>
-          </div>
-
-          <ol className="list-decimal list-inside space-y-1 text-[11px] text-stone-700">
-            <li>Go to <strong>Firebase Console</strong> → Select project <strong className="font-mono">desijourneystudio</strong>.</li>
-            <li>In the left menu, click <strong>Firestore Database</strong> → Click the <strong>Rules</strong> tab at the top.</li>
-            <li>Replace the entire text with the 7-line rule below and click <strong>Publish</strong>:</li>
-          </ol>
-
-          {/* Code block with copy button */}
-          <div className="relative rounded-xl bg-stone-900 text-stone-100 p-3.5 font-mono text-[11px] shadow-inner">
-            <button
-              type="button"
-              onClick={() => {
-                const ruleText = `rules_version = '2';\nservice cloud.firestore {\n  match /databases/{database}/documents {\n    match /{document=**} {\n      allow read, write: if true;\n    }\n  }\n}`;
-                navigator.clipboard.writeText(ruleText);
-                setCopiedRules(true);
-                setTimeout(() => setCopiedRules(false), 3000);
-              }}
-              className="absolute top-2.5 right-2.5 px-2.5 py-1 rounded-md bg-stone-800 hover:bg-stone-700 text-stone-200 text-[10px] font-sans font-semibold flex items-center gap-1 border border-stone-700 transition-colors"
-            >
-              {copiedRules ? (
-                <>
-                  <Check className="w-3 h-3 text-emerald-400" />
-                  <span className="text-emerald-300">Copied!</span>
-                </>
-              ) : (
-                <>
-                  <Copy className="w-3 h-3" />
-                  <span>Copy Rules</span>
-                </>
-              )}
-            </button>
-            <pre className="overflow-x-auto text-[11px] leading-relaxed text-amber-200">
-{`rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    match /{document=**} {
-      allow read, write: if true;
-    }
-  }
-}`}
-            </pre>
-          </div>
-          <p className="text-[10px] text-stone-500 italic">
-            * Note: If Google shows a warning that &ldquo;Your rules are defined as public&rdquo;, this is normal because the internal staff login is managed by Desi Journey Studio instead of Firebase&apos;s consumer auth.
-          </p>
-        </div>
-
-        {/* Sync Trigger Buttons */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2">
-          <div className="flex items-center gap-2 flex-wrap">
-            <button
-              type="button"
-              disabled={isSyncingCloud}
-              onClick={handleSyncToCloud}
-              className="px-4 py-2 rounded-xl bg-forest-800 hover:bg-forest-700 disabled:opacity-50 text-white font-semibold text-xs flex items-center gap-2 shadow-xs transition-colors"
-            >
-              {isSyncingCloud ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              ) : (
-                <Cloud className="w-3.5 h-3.5 text-gold-400" />
-              )}
-              <span>Sync All Local Itineraries to Cloud Now</span>
-            </button>
-
-            <button
-              type="button"
-              disabled={isSyncingCloud}
-              onClick={handleRefreshFromCloud}
-              className="px-3.5 py-2 rounded-xl border border-stone-200 hover:bg-stone-50 disabled:opacity-50 text-stone-700 font-semibold text-xs flex items-center gap-1.5 transition-colors"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 text-stone-600 ${isSyncingCloud ? 'animate-spin' : ''}`} />
-              <span>Fetch &amp; Reload Cloud Data</span>
-            </button>
-          </div>
-
-          <div className="text-[11px] text-stone-500 font-medium">
-            Local Itineraries Ready to Sync: <strong className="text-forest-900">{quotations.length}</strong>
-          </div>
-        </div>
-
-        {cloudSyncMsg && (
-          <div
-            className={`p-3 rounded-xl text-xs font-semibold flex items-center gap-2 ${
-              cloudSyncMsg.type === 'success'
-                ? 'bg-emerald-50 text-emerald-900 border border-emerald-200'
-                : 'bg-rose-50 text-rose-900 border border-rose-200'
-            }`}
-          >
-            {cloudSyncMsg.type === 'success' ? (
-              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-            ) : (
-              <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
-            )}
-            <span>{cloudSyncMsg.text}</span>
-          </div>
-        )}
       </div>
 
       <form onSubmit={handleSave} className="space-y-6 text-xs">
