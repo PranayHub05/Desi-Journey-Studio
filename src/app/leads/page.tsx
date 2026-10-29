@@ -34,6 +34,7 @@ export default function LeadsPage() {
 
   // New Lead Form State
   const [newLeadForm, setNewLeadForm] = useState({
+    guestTitle: 'Mr.',
     guestName: '',
     phone: '',
     email: '',
@@ -91,6 +92,7 @@ export default function LeadsPage() {
     const calculatedEndDate = newLeadForm.endDate || addDaysToDate(newLeadForm.startDate, nights);
 
     addLead({
+      guestTitle: newLeadForm.guestTitle,
       guestName: newLeadForm.guestName,
       phone: newLeadForm.phone,
       whatsappNumber: newLeadForm.phone,
@@ -198,7 +200,7 @@ export default function LeadsPage() {
                   {/* Guest Contact */}
                   <td className="py-3.5 px-4">
                     <div className="font-semibold text-forest-900 text-xs">
-                      {lead.guestName}
+                      {lead.guestTitle ? `${lead.guestTitle} ` : ''}{lead.guestName}
                     </div>
                     <div className="text-[11px] text-stone-500 flex items-center gap-2 mt-0.5">
                       <span className="flex items-center gap-1 text-stone-600">
@@ -352,18 +354,37 @@ export default function LeadsPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                 <div>
                   <label className="font-semibold text-stone-700 block mb-1">
-                    Guest Name *
+                    Guest Designation &amp; Name *
                   </label>
-                  <input
-                    type="text"
-                    required
-                    value={newLeadForm.guestName}
-                    onChange={(e) =>
-                      setNewLeadForm({ ...newLeadForm, guestName: e.target.value })
-                    }
-                    placeholder="e.g. Vikramaditya Sharma"
-                    className="w-full px-3 py-2 rounded-lg border border-stone-200 outline-hidden focus:border-forest-600"
-                  />
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={newLeadForm.guestTitle}
+                      onChange={(e) =>
+                        setNewLeadForm({ ...newLeadForm, guestTitle: e.target.value })
+                      }
+                      className="w-24 px-2 py-2 rounded-lg border border-stone-200 bg-stone-50/70 text-xs font-bold text-forest-900 outline-hidden focus:border-forest-600 shrink-0"
+                    >
+                      <option value="Mr.">Mr.</option>
+                      <option value="Ms.">Ms.</option>
+                      <option value="Mrs.">Mrs.</option>
+                      <option value="Dr.">Dr.</option>
+                      <option value="Prof.">Prof.</option>
+                      <option value="Capt.">Capt.</option>
+                      <option value="Shri">Shri</option>
+                      <option value="Smt.">Smt.</option>
+                      <option value="M/s">M/s</option>
+                    </select>
+                    <input
+                      type="text"
+                      required
+                      value={newLeadForm.guestName}
+                      onChange={(e) =>
+                        setNewLeadForm({ ...newLeadForm, guestName: e.target.value })
+                      }
+                      placeholder="e.g. Vikramaditya Sharma"
+                      className="flex-1 px-3 py-2 rounded-lg border border-stone-200 outline-hidden focus:border-forest-600"
+                    />
+                  </div>
                 </div>
 
                 <div>

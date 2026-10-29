@@ -59,6 +59,7 @@ export type TripStyle = 'Family Holiday' | 'Honeymoon / Couple' | 'Luxury & Heri
 
 export interface Lead {
   id: string;
+  guestTitle?: 'Mr.' | 'Ms.' | 'Mrs.' | 'Dr.' | 'Prof.' | 'Capt.' | 'Shri' | 'Smt.' | 'M/s' | string;
   guestName: string;
   phone: string;
   whatsappNumber?: string;
@@ -310,6 +311,7 @@ export interface Quotation {
   quoteNumber: string; // e.g. "DJ-2026-1042"
   version: number;
   leadId?: string;
+  guestTitle?: 'Mr.' | 'Ms.' | 'Mrs.' | 'Dr.' | 'Prof.' | 'Capt.' | 'Shri' | 'Smt.' | 'M/s' | string;
   guestName: string;
   guestPhone: string;
   guestEmail?: string;

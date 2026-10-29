@@ -388,6 +388,36 @@ export function calculateTourCosting(
   };
 }
 
+export const GUEST_DESIGNATIONS = [
+  'Mr.',
+  'Ms.',
+  'Mrs.',
+  'Dr.',
+  'Prof.',
+  'Capt.',
+  'Shri',
+  'Smt.',
+  'M/s',
+] as const;
+
+export type GuestDesignation = (typeof GUEST_DESIGNATIONS)[number];
+
+/**
+ * Format the customer/guest name with an explicit, unambiguous designation (e.g. "Dr. Rajesh Sharma", "Ms. Pooja Roy").
+ * Strictly prevents ambiguous "Mr./Ms." prefixes.
+ */
+export function formatGuestFullName(guestName?: string, guestTitle?: string): string {
+  if (!guestName || !guestName.trim()) return 'Valued Guest';
+  const cleanName = guestName.trim();
+  // Check if cleanName already begins with one of the recognized designations
+  const hasExistingPrefix = /^(mr\.|ms\.|mrs\.|dr\.|prof\.|capt\.|shri|smt\.|m\/s)\b/i.test(cleanName);
+  if (hasExistingPrefix) {
+    return cleanName;
+  }
+  const prefix = (guestTitle && guestTitle.trim()) || 'Mr.';
+  return `${prefix} ${cleanName}`;
+}
+
 /**
  * Apply privacy and disclosure masking rules to create a client proposal snapshot.
  *
@@ -412,9 +442,16 @@ export function sanitizeQuotationForCustomer(
 
   const sanitizedDays: ItineraryDay[] = (quote.days || []).map((day, idx) => {
     let displayHotelName = day.customHotelName;
+    const hotelObj = hotelsMaster.find((h) => h.id === day.hotelId);
 
-    if (!showExactHotels) {
-      const hotelObj = hotelsMaster.find((h) => h.id === day.hotelId);
+    if (showExactHotels) {
+      // In Disclosed mode, show the explicit property name
+      displayHotelName =
+        hotelObj?.name ||
+        day.customHotelName ||
+        `${day.hotelDestination} Selected Property`;
+    } else {
+      // In Pre-Advance Masked mode, show the redacted category description
       if (hotelObj?.maskedCategoryName) {
         displayHotelName = hotelObj.maskedCategoryName;
       } else if (hotelObj?.starCategory) {
@@ -472,7 +509,7 @@ export function generateWhatsAppMessage(
   publicQuoteUrl: string,
   agencyName: string = 'Desi Journey'
 ): string {
-  const greeting = `Namaste ${quote.guestName}! 🙏`;
+  const greeting = `Namaste ${formatGuestFullName(quote.guestName, quote.guestTitle)}! 🙏`;
   const intro = `Here is your customized travel proposal for *${quote.tripTitle}* curated by ${agencyName}.`;
   const highlights = [
     `📍 *Route:* ${quote.destinationsSummary}`,

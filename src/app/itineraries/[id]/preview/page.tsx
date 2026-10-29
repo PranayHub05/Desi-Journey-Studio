@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -34,10 +34,12 @@ import {
   addDaysToDate,
   sanitizeQuotationForCustomer,
   getRoomOccupancySummary,
+  formatGuestFullName,
   generateWhatsAppMessage,
   groupItineraryDaysByLocation,
   GroupedDaySection,
 } from '../../../../lib/calculations';
+import { DisclosureMode, Quotation } from '../../../../types';
 
 export default function QuotationCustomerPreviewPage() {
   const params = useParams();
@@ -55,21 +57,73 @@ export default function QuotationCustomerPreviewPage() {
 
   const rawQuote = getQuotationById(quoteId);
 
-  // Email Modal State
-  const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
-  const [emailSubject, setEmailSubject] = useState(
-    rawQuote ? `Travel Proposal for ${rawQuote.tripTitle} - Desi Journey` : ''
-  );
-  const [emailBody, setEmailBody] = useState(
-    rawQuote
-      ? `Dear ${rawQuote.guestName},\n\nNamaste! We are delighted to share your tailored travel proposal for ${rawQuote.tripTitle}.\n\nPlease review the day-wise itinerary, accommodations, and inclusions.\n\nWarm regards,\nDesi Journey Studio`
-      : ''
-  );
+  // Active Disclosure Mode State (Strictly reactive between Masked Pre-Advance & Disclosed Confirmed mode)
+  const [disclosureMode, setDisclosureMode] = useState<DisclosureMode>(() => {
+    return rawQuote?.customization?.disclosureMode || 'masked';
+  });
 
-  // Group sequential days into distinct hotel accommodation stays
+  // Sync state whenever underlying quotation changes
+  useEffect(() => {
+    if (rawQuote?.customization?.disclosureMode) {
+      setDisclosureMode(rawQuote.customization.disclosureMode);
+    }
+  }, [rawQuote?.customization?.disclosureMode]);
+
+  // Construct effective quotation object with active disclosure mode
+  const effectiveQuote: Quotation | undefined = useMemo(() => {
+    if (!rawQuote) return undefined;
+    return {
+      ...rawQuote,
+      customization: {
+        ...rawQuote.customization,
+        disclosureMode,
+        showExactHotelNames: disclosureMode === 'disclosed',
+        showDriverVehicleDetails: disclosureMode === 'disclosed',
+      },
+    };
+  }, [rawQuote, disclosureMode]);
+
+  // Sanitized proposal snapshot strictly synchronized with active disclosure mode
+  const { sanitizedQuote, isPreAdvanceMasked } = useMemo<{
+    sanitizedQuote: Quotation;
+    isPreAdvanceMasked: boolean;
+  }>(() => {
+    if (!effectiveQuote) {
+      return {
+        sanitizedQuote: {} as Quotation,
+        isPreAdvanceMasked: disclosureMode === 'masked',
+      };
+    }
+    return sanitizeQuotationForCustomer(effectiveQuote, hotels);
+  }, [effectiveQuote, hotels, disclosureMode]);
+
+  // Group Multi-Day Stays Toggle State (default to true)
+  const [groupMultiDayStays, setGroupMultiDayStays] = useState<boolean>(() => {
+    return rawQuote?.customization?.groupMultiDayStays !== false;
+  });
+
+  const toggleGroupMultiDayStays = () => {
+    const nextVal = !groupMultiDayStays;
+    setGroupMultiDayStays(nextVal);
+    if (rawQuote) {
+      updateQuotation(rawQuote.id, {
+        customization: {
+          ...rawQuote.customization,
+          groupMultiDayStays: nextVal,
+        },
+      });
+    }
+  };
+
+  // Grouped days calculation: unites consecutive days in the same destination into single sections
+  const groupedDays = useMemo(() => {
+    if (!sanitizedQuote?.days) return [];
+    return groupItineraryDaysByLocation(sanitizedQuote.days);
+  }, [sanitizedQuote]);
+
+  // Group sequential days into distinct hotel accommodation stays (reflects active disclosure mode immediately)
   const hotelStays = useMemo(() => {
-    if (!rawQuote) return [];
-    const { sanitizedQuote } = sanitizeQuotationForCustomer(rawQuote, hotels);
+    if (!sanitizedQuote) return [];
     const stays: {
       destination: string;
       hotelName: string;
@@ -88,18 +142,24 @@ export default function QuotationCustomerPreviewPage() {
       const day = sanitizedQuote.days[idx];
       if (day.dayType === 'Departure') continue;
       const hotelObj = hotels.find((h) => h.id === day.hotelId);
-      const hName = day.customHotelName || hotelObj?.name || `${day.hotelDestination} Selected Property`;
-      const img = hotelObj?.imageUrl || hotelObj?.photos?.[0]?.url || 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=800&q=80';
+      const hName =
+        day.customHotelName ||
+        (disclosureMode === 'disclosed' ? hotelObj?.name : hotelObj?.maskedCategoryName) ||
+        `${day.hotelDestination} Selected Property`;
+      const img =
+        hotelObj?.imageUrl ||
+        hotelObj?.photos?.[0]?.url ||
+        'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=800&q=80';
 
-      const dayDate = day.date || (rawQuote.startDate ? addDaysToDate(rawQuote.startDate, idx) : '');
-      const stayRooms = day.roomsCount || rawQuote.roomsCount || 1;
+      const dayDate = day.date || (sanitizedQuote.startDate ? addDaysToDate(sanitizedQuote.startDate, idx) : '');
+      const stayRooms = day.roomsCount || sanitizedQuote.roomsCount || 1;
       const staySummary = getRoomOccupancySummary(
         stayRooms,
-        day.roomSharingType || rawQuote.roomSharingType,
-        day.extraBedsCount ?? rawQuote.extraBedsCount ?? 0,
-        day.extraMattressCount ?? rawQuote.extraMattressCount ?? 0,
-        day.childWithBedCount ?? rawQuote.childWithBedCount ?? 0,
-        day.childNoBedCount ?? rawQuote.childNoBedCount ?? 0
+        day.roomSharingType || sanitizedQuote.roomSharingType,
+        day.extraBedsCount ?? sanitizedQuote.extraBedsCount ?? 0,
+        day.extraMattressCount ?? sanitizedQuote.extraMattressCount ?? 0,
+        day.childWithBedCount ?? sanitizedQuote.childWithBedCount ?? 0,
+        day.childNoBedCount ?? sanitizedQuote.childNoBedCount ?? 0
       );
 
       if (currentStay && currentStay.hotelName === hName && currentStay.destination === day.hotelDestination) {
@@ -129,7 +189,34 @@ export default function QuotationCustomerPreviewPage() {
       stays.push(currentStay);
     }
     return stays;
-  }, [rawQuote, hotels]);
+  }, [sanitizedQuote, hotels, disclosureMode]);
+
+  // Toggle between Pre-Advance Masked view and Confirmed Disclosed view
+  const toggleDisclosureMode = () => {
+    const newMode: DisclosureMode = disclosureMode === 'masked' ? 'disclosed' : 'masked';
+    setDisclosureMode(newMode);
+    if (rawQuote) {
+      updateQuotation(rawQuote.id, {
+        customization: {
+          ...rawQuote.customization,
+          disclosureMode: newMode,
+          showExactHotelNames: newMode === 'disclosed',
+          showDriverVehicleDetails: newMode === 'disclosed',
+        },
+      });
+    }
+  };
+
+  // Email Modal State
+  const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
+  const [emailSubject, setEmailSubject] = useState(
+    rawQuote ? `Travel Proposal for ${rawQuote.tripTitle} - Desi Journey` : ''
+  );
+  const [emailBody, setEmailBody] = useState(
+    rawQuote
+      ? `Dear ${formatGuestFullName(rawQuote.guestName, rawQuote.guestTitle)},\n\nNamaste! We are delighted to share your tailored travel proposal for ${rawQuote.tripTitle}.\n\nPlease review the day-wise itinerary, accommodations, and inclusions.\n\nWarm regards,\nDesi Journey Studio`
+      : ''
+  );
 
   if (!rawQuote) {
     return (
@@ -145,48 +232,6 @@ export default function QuotationCustomerPreviewPage() {
       </div>
     );
   }
-
-  // Sanitized view according to current mode
-  const { sanitizedQuote, isPreAdvanceMasked } = sanitizeQuotationForCustomer(
-    rawQuote,
-    hotels
-  );
-
-  // Group Multi-Day Stays Toggle State (default to true)
-  const [groupMultiDayStays, setGroupMultiDayStays] = useState<boolean>(() => {
-    return rawQuote?.customization?.groupMultiDayStays !== false;
-  });
-
-  const toggleGroupMultiDayStays = () => {
-    const nextVal = !groupMultiDayStays;
-    setGroupMultiDayStays(nextVal);
-    if (rawQuote) {
-      updateQuotation(rawQuote.id, {
-        customization: {
-          ...rawQuote.customization,
-          groupMultiDayStays: nextVal,
-        },
-      });
-    }
-  };
-
-  // Grouped days calculation: unites consecutive days in the same destination into single sections
-  const groupedDays = useMemo(() => {
-    if (!sanitizedQuote?.days) return [];
-    return groupItineraryDaysByLocation(sanitizedQuote.days);
-  }, [sanitizedQuote]);
-
-  const toggleDisclosureMode = () => {
-    const newMode = isPreAdvanceMasked ? 'disclosed' : 'masked';
-    updateQuotation(rawQuote.id, {
-      customization: {
-        ...rawQuote.customization,
-        disclosureMode: newMode,
-        showExactHotelNames: newMode === 'disclosed',
-        showDriverVehicleDetails: newMode === 'disclosed',
-      },
-    });
-  };
 
   const shareableUrl =
     typeof window !== 'undefined'
@@ -408,7 +453,7 @@ export default function QuotationCustomerPreviewPage() {
         <div className="space-y-4">
           <div className="space-y-1">
             <div className="text-sm font-bold text-stone-900">
-              Dear {sanitizedQuote.guestName ? `Mr./Ms. ${sanitizedQuote.guestName}` : 'Valued Guest'},
+              Dear {formatGuestFullName(sanitizedQuote.guestName, sanitizedQuote.guestTitle)},
             </div>
             <p className="text-xs text-stone-600 leading-relaxed">
               Greetings from <strong>Desi Journey!</strong> Thank you for choosing us as your preferred travel specialist.
@@ -511,6 +556,15 @@ export default function QuotationCustomerPreviewPage() {
                       <span className="text-xs font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
                         {stay.destination}
                       </span>
+                      {isPreAdvanceMasked ? (
+                        <span className="text-[10px] font-bold text-purple-700 bg-purple-50 px-2 py-0.5 rounded border border-purple-200 flex items-center gap-1">
+                          <Lock className="w-2.5 h-2.5" /> Masked Category
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-bold text-teal-700 bg-teal-50 px-2 py-0.5 rounded border border-teal-200 flex items-center gap-1">
+                          <Unlock className="w-2.5 h-2.5" /> Confirmed Property
+                        </span>
+                      )}
                       <span className="text-[11px] font-bold text-stone-700 ml-auto">
                         {stay.nightsCount} {stay.nightsCount === 1 ? 'Night' : 'Nights'}
                       </span>
@@ -570,8 +624,18 @@ export default function QuotationCustomerPreviewPage() {
                     alt={stay.hotelName}
                     className="w-full h-full object-cover"
                   />
-                  <div className="absolute bottom-2 right-2 px-2 py-0.5 rounded bg-black/60 backdrop-blur-xs text-white text-[9px] font-semibold">
-                    Verified Accommodation
+                  <div className="absolute bottom-2 right-2 px-2 py-0.5 rounded bg-black/60 backdrop-blur-xs text-white text-[9px] font-semibold flex items-center gap-1">
+                    {isPreAdvanceMasked ? (
+                      <>
+                        <Lock className="w-2.5 h-2.5 text-purple-300" />
+                        <span>Category Equivalent</span>
+                      </>
+                    ) : (
+                      <>
+                        <Unlock className="w-2.5 h-2.5 text-emerald-300" />
+                        <span>Confirmed Accommodation</span>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>

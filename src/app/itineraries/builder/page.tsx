@@ -64,6 +64,8 @@ import {
   calculateTourCosting,
   calculateHotelDayCost,
   getRoomOccupancySummary,
+  formatGuestFullName,
+  GUEST_DESIGNATIONS,
   calculateVehicleTourCost,
   sanitizeQuotationForCustomer,
   generateWhatsAppMessage,
@@ -97,6 +99,7 @@ function ItineraryBuilderContent() {
   const [currentStep, setCurrentStep] = useState<number>(1);
 
   // Core Form State
+  const [guestTitle, setGuestTitle] = useState<string>('Mr.');
   const [guestName, setGuestName] = useState('');
   const [guestPhone, setGuestPhone] = useState('');
   const [guestEmail, setGuestEmail] = useState('');
@@ -488,6 +491,7 @@ function ItineraryBuilderContent() {
       const q = quotations.find((quote) => quote.id === editQuoteId);
       if (q) {
         hasLoadedQuoteRef.current = editQuoteId;
+        if (q.guestTitle) setGuestTitle(q.guestTitle);
         setGuestName(q.guestName);
         setGuestPhone(q.guestPhone);
         setGuestEmail(q.guestEmail || '');
@@ -525,6 +529,7 @@ function ItineraryBuilderContent() {
       if (lead) {
         hasLoadedLeadRef.current = fromLeadId;
         setLeadId(lead.id);
+        if (lead.guestTitle) setGuestTitle(lead.guestTitle);
         setGuestName(lead.guestName);
         setGuestPhone(lead.phone);
         setGuestEmail(lead.email || '');
@@ -583,6 +588,7 @@ function ItineraryBuilderContent() {
       if (saved) {
         const draft = JSON.parse(saved);
         if (draft && Array.isArray(draft.days) && draft.days.length > 0) {
+          if (draft.guestTitle) setGuestTitle(draft.guestTitle);
           if (draft.guestName) setGuestName(draft.guestName);
           if (draft.guestPhone) setGuestPhone(draft.guestPhone);
           if (draft.guestEmail) setGuestEmail(draft.guestEmail);
@@ -785,6 +791,7 @@ function ItineraryBuilderContent() {
       quoteNumber: editQuoteId ? (quotations.find((q) => q.id === editQuoteId)?.quoteNumber || 'DJ-2026-DRAFT') : 'DJ-2026-PREVIEW',
       version: 1,
       leadId,
+      guestTitle,
       guestName,
       guestPhone,
       guestEmail,
@@ -828,6 +835,7 @@ function ItineraryBuilderContent() {
     editQuoteId,
     quotations,
     leadId,
+    guestTitle,
     guestName,
     guestPhone,
     guestEmail,
@@ -868,6 +876,7 @@ function ItineraryBuilderContent() {
     if (days.length === 0) return;
     try {
       const draftData = {
+        guestTitle,
         guestName,
         guestPhone,
         guestEmail,
@@ -906,6 +915,7 @@ function ItineraryBuilderContent() {
     }
   }, [
     editQuoteId,
+    guestTitle,
     guestName,
     guestPhone,
     guestEmail,
@@ -1143,7 +1153,7 @@ function ItineraryBuilderContent() {
               </h1>
             </div>
             <p className="text-xs text-stone-500 mt-0.5">
-              Guest: <strong className="text-forest-900">{guestName}</strong> • {duration.nights}N/{duration.days}D • {adults} Adults
+              Guest: <strong className="text-forest-900">{formatGuestFullName(guestName, guestTitle)}</strong> • {duration.nights}N/{duration.days}D • {adults} Adults
             </p>
           </div>
 
@@ -1283,13 +1293,34 @@ function ItineraryBuilderContent() {
                   />
                 </div>
                 <div>
-                  <label className="font-semibold text-stone-700 block mb-1">Guest / Family Name *</label>
-                  <input
-                    type="text"
-                    value={guestName}
-                    onChange={(e) => setGuestName(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg border border-stone-200 text-xs font-medium outline-hidden focus:border-forest-600"
-                  />
+                  <label className="font-semibold text-stone-700 block mb-1">
+                    Guest Designation &amp; Name *
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={guestTitle}
+                      onChange={(e) => setGuestTitle(e.target.value)}
+                      className="w-24 px-2 py-2 rounded-lg border border-stone-200 bg-stone-50/70 text-xs font-bold text-forest-900 outline-hidden focus:border-forest-600 shrink-0"
+                    >
+                      <option value="Mr.">Mr.</option>
+                      <option value="Ms.">Ms.</option>
+                      <option value="Mrs.">Mrs.</option>
+                      <option value="Dr.">Dr.</option>
+                      <option value="Prof.">Prof.</option>
+                      <option value="Capt.">Capt.</option>
+                      <option value="Shri">Shri</option>
+                      <option value="Smt.">Smt.</option>
+                      <option value="M/s">M/s</option>
+                    </select>
+                    <input
+                      type="text"
+                      required
+                      value={guestName}
+                      onChange={(e) => setGuestName(e.target.value)}
+                      placeholder="e.g. Rajesh Sharma"
+                      className="flex-1 px-3 py-2 rounded-lg border border-stone-200 text-xs font-medium outline-hidden focus:border-forest-600"
+                    />
+                  </div>
                 </div>
                 <div>
                   <label className="font-semibold text-stone-700 block mb-1">Primary Mobile / WhatsApp *</label>
@@ -3155,7 +3186,7 @@ function ItineraryBuilderContent() {
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4 pt-4 border-t border-stone-100 text-[11px]">
                     <div>
                       <span className="text-stone-400 block">Lead Guest:</span>
-                      <strong className="text-forest-900">{sanitizedQuote.guestName}</strong>
+                      <strong className="text-forest-900">{formatGuestFullName(sanitizedQuote.guestName, sanitizedQuote.guestTitle)}</strong>
                     </div>
                     <div>
                       <span className="text-stone-400 block">Travel Dates:</span>
