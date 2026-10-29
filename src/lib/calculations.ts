@@ -115,7 +115,50 @@ export function addDaysToDate(dateStr: string, daysToAdd: number): string {
 }
 
 /**
+ * Generate human-readable occupancy and bedding configuration summary.
+ */
+export function getRoomOccupancySummary(
+  roomsCount: number,
+  roomSharingType?: string,
+  extraBedsCount: number = 0,
+  extraMattressCount: number = 0,
+  childWithBedCount: number = 0,
+  childNoBedCount: number = 0
+): string {
+  const parts: string[] = [];
+
+  if (roomSharingType === 'triple') {
+    parts.push(`${roomsCount} Triple Room${roomsCount > 1 ? 's' : ''}`);
+  } else if (roomSharingType === 'single') {
+    parts.push(`${roomsCount} Single Room${roomsCount > 1 ? 's' : ''}`);
+  } else {
+    parts.push(`${roomsCount} Double Room${roomsCount > 1 ? 's' : ''}`);
+  }
+
+  if (extraBedsCount > 0) {
+    parts.push(`${extraBedsCount} Extra Bed${extraBedsCount > 1 ? 's' : ''}`);
+  }
+  if (extraMattressCount > 0) {
+    parts.push(`${extraMattressCount} Extra Mattress${extraMattressCount > 1 ? 'es' : ''}`);
+  }
+  if (childWithBedCount > 0) {
+    parts.push(`${childWithBedCount} CWB`);
+  }
+  if (childNoBedCount > 0) {
+    parts.push(`${childNoBedCount} CNB`);
+  }
+
+  return parts.join(' + ');
+}
+
+/**
  * Calculate estimated hotel accommodation wholesale cost for an itinerary day.
+ * Supports:
+ * - Base room tariff (Double or Triple occupancy)
+ * - Extra bed with cot (billed at extraBedAdultRate)
+ * - Extra mattress without cot (billed at extraMattressRate or fallback ~75% of extra bed)
+ * - Child with bed (CWB)
+ * - Child without bed (CNB)
  */
 export function calculateHotelDayCost(
   hotel: Hotel | undefined,
@@ -123,7 +166,11 @@ export function calculateHotelDayCost(
   mealPlan: MealPlanCode,
   roomsCount: number,
   adultsCount: number,
-  extraBedsCount: number = 0
+  extraBedsCount: number = 0,
+  extraMattressCount: number = 0,
+  childWithBedCount: number = 0,
+  childNoBedCount: number = 0,
+  roomSharingType?: string
 ): { cost: number; isCustomRate: boolean; description: string } {
   if (!hotel) {
     return {
@@ -149,19 +196,66 @@ export function calculateHotelDayCost(
     };
   }
 
-  // Base double occupancy for each room
-  let totalForDay = matchingRate.doubleOccupancyRate * roomsCount;
+  let totalForDay = 0;
+  const breakdownParts: string[] = [];
 
-  // Extra bed charges for extra adults
-  if (extraBedsCount > 0) {
-    const extraBedRate = matchingRate.extraBedAdultRate || matchingRate.doubleOccupancyRate * 0.35;
-    totalForDay += extraBedRate * extraBedsCount;
+  // Check if pure triple occupancy is requested
+  if (roomSharingType === 'triple') {
+    if (matchingRate.tripleOccupancyRate && matchingRate.tripleOccupancyRate > 0) {
+      totalForDay = matchingRate.tripleOccupancyRate * roomsCount;
+      breakdownParts.push(`${roomsCount} Triple Room(s)`);
+    } else {
+      // Fallback: double occupancy + extra bed rate
+      const tripleFallback = matchingRate.doubleOccupancyRate + (matchingRate.extraBedAdultRate || Math.round(matchingRate.doubleOccupancyRate * 0.35));
+      totalForDay = tripleFallback * roomsCount;
+      breakdownParts.push(`${roomsCount} Triple Room(s)`);
+    }
+  } else if (roomSharingType === 'single' && matchingRate.singleOccupancyRate && matchingRate.singleOccupancyRate > 0) {
+    totalForDay = matchingRate.singleOccupancyRate * roomsCount;
+    breakdownParts.push(`${roomsCount} Single Room(s)`);
+  } else {
+    // Standard base room cost (Double occupancy)
+    const baseRate = matchingRate.doubleOccupancyRate;
+    totalForDay = baseRate * roomsCount;
+    breakdownParts.push(`${roomsCount} Room(s) (Double Occ)`);
   }
+
+  // Extra Bed with Cot / Bed
+  if (extraBedsCount > 0) {
+    const extraBedRate = matchingRate.extraBedAdultRate || Math.round(matchingRate.doubleOccupancyRate * 0.35);
+    totalForDay += extraBedRate * extraBedsCount;
+    breakdownParts.push(`${extraBedsCount} Extra Bed(s)`);
+  }
+
+  // Extra Mattress (without cot)
+  if (extraMattressCount > 0) {
+    const extraMattressRate = matchingRate.extraMattressRate ?? Math.round((matchingRate.extraBedAdultRate || Math.round(matchingRate.doubleOccupancyRate * 0.35)) * 0.75);
+    totalForDay += extraMattressRate * extraMattressCount;
+    breakdownParts.push(`${extraMattressCount} Extra Mattress`);
+  }
+
+  // Child with Bed (CWB)
+  if (childWithBedCount > 0) {
+    const childBedRate = matchingRate.childWithBedRate ?? Math.round((matchingRate.extraBedAdultRate || Math.round(matchingRate.doubleOccupancyRate * 0.35)) * 0.8);
+    totalForDay += childBedRate * childWithBedCount;
+    breakdownParts.push(`${childWithBedCount} CWB`);
+  }
+
+  // Child No Bed (CNB)
+  if (childNoBedCount > 0) {
+    const childNoBedRate = matchingRate.childNoBedRate ?? 0;
+    totalForDay += childNoBedRate * childNoBedCount;
+    if (childNoBedRate > 0) {
+      breakdownParts.push(`${childNoBedCount} CNB`);
+    }
+  }
+
+  const breakdownSuffix = breakdownParts.length > 0 ? ` [${breakdownParts.join(' + ')}]` : '';
 
   return {
     cost: totalForDay,
     isCustomRate: false,
-    description: `${hotel.name} - ${matchingRate.roomCategory} (${mealPlan}) x ${roomsCount} Room(s)`,
+    description: `${hotel.name} - ${matchingRate.roomCategory} (${mealPlan})${breakdownSuffix}`,
   };
 }
 

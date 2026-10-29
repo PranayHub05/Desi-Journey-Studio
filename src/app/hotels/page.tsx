@@ -94,7 +94,9 @@ export default function HotelsPage() {
         roomCategory: 'Deluxe Room',
         mealPlan: 'CP',
         doubleOccupancyRate: 4500,
+        tripleOccupancyRate: 5600,
         extraBedAdultRate: 1500,
+        extraMattressRate: 1100,
         childWithBedRate: 1100,
         childNoBedRate: 600,
       },
@@ -102,7 +104,9 @@ export default function HotelsPage() {
         roomCategory: 'Deluxe Room',
         mealPlan: 'MAP',
         doubleOccupancyRate: 5500,
+        tripleOccupancyRate: 6800,
         extraBedAdultRate: 1800,
+        extraMattressRate: 1350,
         childWithBedRate: 1400,
         childNoBedRate: 800,
       },
@@ -394,7 +398,9 @@ export default function HotelsPage() {
           roomCategory: 'Deluxe Room',
           mealPlan: 'MAP',
           doubleOccupancyRate: 5000,
+          tripleOccupancyRate: 6200,
           extraBedAdultRate: 1500,
+          extraMattressRate: 1100,
           childWithBedRate: 1200,
           childNoBedRate: 700,
         },
@@ -805,14 +811,18 @@ export default function HotelsPage() {
                       </div>
 
                       {/* Extra Bed & Child Rates */}
-                      <div className="grid grid-cols-3 gap-1 pt-1 border-t border-stone-200/60 text-[10px] text-stone-500">
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 pt-1.5 border-t border-stone-200/60 text-[10px] text-stone-500">
                         <div>
-                          <span>Extra Bed (Adult): </span>
+                          <span>Extra Bed: </span>
                           <strong className="text-stone-800">{formatINR(rate.extraBedAdultRate)}</strong>
                         </div>
                         <div>
+                          <span>Extra Mattress: </span>
+                          <strong className="text-stone-800">{formatINR(rate.extraMattressRate || Math.round(rate.extraBedAdultRate * 0.75))}</strong>
+                        </div>
+                        <div>
                           <span>CWB (Child Bed): </span>
-                          <strong className="text-emerald-700">{formatINR(rate.childWithBedRate || 0)}</strong>
+                          <strong className="text-emerald-700">{formatINR(rate.childWithBedRate || Math.round(rate.extraBedAdultRate * 0.8))}</strong>
                         </div>
                         <div>
                           <span>CNB (No Bed): </span>
@@ -1177,7 +1187,7 @@ export default function HotelsPage() {
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-1">
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 pt-1">
                         <div>
                           <label className="font-medium text-stone-700 block mb-0.5 text-[10px]">
                             Double Occupancy (₹) *
@@ -1196,8 +1206,25 @@ export default function HotelsPage() {
                         </div>
 
                         <div>
+                          <label className="font-medium text-indigo-800 block mb-0.5 text-[10px] font-semibold">
+                            Triple Occupancy (₹)
+                          </label>
+                          <input
+                            type="number"
+                            placeholder={String(rate.doubleOccupancyRate + rate.extraBedAdultRate)}
+                            value={rate.tripleOccupancyRate || ''}
+                            onChange={(e) =>
+                              handleUpdateRateRow(rIdx, {
+                                tripleOccupancyRate: e.target.value ? Number(e.target.value) : undefined,
+                              })
+                            }
+                            className="w-full px-2 py-1 rounded border border-indigo-200 bg-indigo-50/30 text-indigo-900 tabular-nums font-medium"
+                          />
+                        </div>
+
+                        <div>
                           <label className="font-medium text-stone-700 block mb-0.5 text-[10px]">
-                            Extra Bed Adult (₹)
+                            Extra Bed Adult (with cot ₹)
                           </label>
                           <input
                             type="number"
@@ -1208,6 +1235,23 @@ export default function HotelsPage() {
                               })
                             }
                             className="w-full px-2 py-1 rounded border border-stone-200 bg-white tabular-nums"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="font-medium text-amber-800 block mb-0.5 text-[10px] font-semibold">
+                            Extra Mattress (no cot ₹)
+                          </label>
+                          <input
+                            type="number"
+                            placeholder={String(Math.round(rate.extraBedAdultRate * 0.75))}
+                            value={rate.extraMattressRate || ''}
+                            onChange={(e) =>
+                              handleUpdateRateRow(rIdx, {
+                                extraMattressRate: e.target.value ? Number(e.target.value) : undefined,
+                              })
+                            }
+                            className="w-full px-2 py-1 rounded border border-amber-200 bg-amber-50/30 text-amber-900 tabular-nums"
                           />
                         </div>
 

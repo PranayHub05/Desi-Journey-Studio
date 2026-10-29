@@ -33,6 +33,7 @@ import {
   formatIndianDate,
   addDaysToDate,
   sanitizeQuotationForCustomer,
+  getRoomOccupancySummary,
   generateWhatsAppMessage,
   groupItineraryDaysByLocation,
   GroupedDaySection,
@@ -78,6 +79,8 @@ export default function QuotationCustomerPreviewPage() {
       checkInDate: string;
       checkOutDate: string;
       imageUrl?: string;
+      roomsCount: number;
+      occupancySummary: string;
     }[] = [];
 
     let currentStay: (typeof stays)[0] | null = null;
@@ -89,6 +92,15 @@ export default function QuotationCustomerPreviewPage() {
       const img = hotelObj?.imageUrl || hotelObj?.photos?.[0]?.url || 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=800&q=80';
 
       const dayDate = day.date || (rawQuote.startDate ? addDaysToDate(rawQuote.startDate, idx) : '');
+      const stayRooms = day.roomsCount || rawQuote.roomsCount || 1;
+      const staySummary = getRoomOccupancySummary(
+        stayRooms,
+        day.roomSharingType || rawQuote.roomSharingType,
+        day.extraBedsCount ?? rawQuote.extraBedsCount ?? 0,
+        day.extraMattressCount ?? rawQuote.extraMattressCount ?? 0,
+        day.childWithBedCount ?? rawQuote.childWithBedCount ?? 0,
+        day.childNoBedCount ?? rawQuote.childNoBedCount ?? 0
+      );
 
       if (currentStay && currentStay.hotelName === hName && currentStay.destination === day.hotelDestination) {
         currentStay.nightsCount += 1;
@@ -107,6 +119,8 @@ export default function QuotationCustomerPreviewPage() {
           checkInDate: dayDate,
           checkOutDate: addDaysToDate(dayDate, 1),
           imageUrl: img,
+          roomsCount: stayRooms,
+          occupancySummary: staySummary,
         };
       }
     }
@@ -434,11 +448,21 @@ export default function QuotationCustomerPreviewPage() {
 
               <div className="p-3">
                 <span className="text-[10px] font-bold text-[#102a43] uppercase tracking-wider block">
-                  PAX
+                  PAX & ROOMS
                 </span>
                 <strong className="text-xs text-stone-900 font-bold block mt-0.5">
                   {sanitizedQuote.adults} Adults {sanitizedQuote.children > 0 ? `+ ${sanitizedQuote.children} Child` : ''}
                 </strong>
+                <span className="text-[10px] text-stone-600 block mt-0.5 font-medium truncate" title={getRoomOccupancySummary(sanitizedQuote.roomsCount, sanitizedQuote.roomSharingType, sanitizedQuote.extraBedsCount, sanitizedQuote.extraMattressCount, sanitizedQuote.childWithBedCount, sanitizedQuote.childNoBedCount)}>
+                  {getRoomOccupancySummary(
+                    sanitizedQuote.roomsCount,
+                    sanitizedQuote.roomSharingType,
+                    sanitizedQuote.extraBedsCount,
+                    sanitizedQuote.extraMattressCount,
+                    sanitizedQuote.childWithBedCount,
+                    sanitizedQuote.childNoBedCount
+                  )}
+                </span>
               </div>
 
               <div className="p-3">
@@ -497,7 +521,7 @@ export default function QuotationCustomerPreviewPage() {
                     </h3>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3 text-xs pt-2 border-t border-stone-100">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs pt-2 border-t border-stone-100">
                     <div>
                       <span className="text-[10px] text-stone-400 uppercase font-semibold block">
                         Room Category:
@@ -510,6 +534,14 @@ export default function QuotationCustomerPreviewPage() {
                       </span>
                       <strong className="text-emerald-800 font-bold text-xs">
                         {stay.mealPlan} ({stay.mealPlan === 'MAP' ? 'Breakfast & Dinner' : stay.mealPlan === 'CP' ? 'Breakfast Included' : 'Room Only'})
+                      </strong>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-stone-400 uppercase font-semibold block">
+                        Rooms & Bedding:
+                      </span>
+                      <strong className="text-forest-900 text-xs">
+                        {stay.occupancySummary || `${stay.roomsCount || 1} Room(s)`}
                       </strong>
                     </div>
                     <div>

@@ -102,8 +102,10 @@ export interface HotelRoomRate {
   doubleOccupancyRate: number; // Base room tariff (2 adults)
   tripleOccupancyRate?: number; // 3 adults sharing room
   extraBedAdultRate: number;
+  extraMattressRate?: number; // Extra mattress on floor (without cot)
   childWithBedRate?: number;
   childNoBedRate?: number;
+  singleOccupancyRate?: number;
   validFrom?: string;
   validTo?: string;
 }
@@ -248,6 +250,12 @@ export interface ItineraryDay {
   customHotelName?: string;
   roomCategory?: string;
   mealPlan: MealPlanCode;
+  roomsCount?: number;
+  roomSharingType?: 'single' | 'double' | 'triple' | 'double_with_extra_bed' | 'double_with_mattress' | 'separate_rooms' | 'custom';
+  extraBedsCount?: number;
+  extraMattressCount?: number;
+  childWithBedCount?: number;
+  childNoBedCount?: number;
   activities: DayActivity[];
   breakfastIncluded: boolean;
   lunchIncluded: boolean;
@@ -316,6 +324,11 @@ export interface Quotation {
   children: number;
   infants: number;
   roomsCount: number;
+  roomSharingType?: 'single' | 'double' | 'triple' | 'double_with_extra_bed' | 'double_with_mattress' | 'separate_rooms' | 'custom';
+  extraBedsCount?: number;
+  extraMattressCount?: number;
+  childWithBedCount?: number;
+  childNoBedCount?: number;
   vehicleId?: string;
   vehicleName: string;
   customVehicleName?: string;

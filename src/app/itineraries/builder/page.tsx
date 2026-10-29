@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, Suspense } from 'react';
+import React, { useState, useEffect, useMemo, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -63,6 +63,7 @@ import {
   addDaysToDate,
   calculateTourCosting,
   calculateHotelDayCost,
+  getRoomOccupancySummary,
   calculateVehicleTourCost,
   sanitizeQuotationForCustomer,
   generateWhatsAppMessage,
@@ -106,7 +107,75 @@ function ItineraryBuilderContent() {
   const [children, setChildren] = useState<number>(0);
   const [infants, setInfants] = useState<number>(0);
   const [roomsCount, setRoomsCount] = useState<number>(1);
+  const [roomSharingType, setRoomSharingType] = useState<
+    'single' | 'double' | 'triple' | 'double_with_extra_bed' | 'double_with_mattress' | 'separate_rooms' | 'custom'
+  >('double');
+  const [extraBedsCount, setExtraBedsCount] = useState<number>(0);
+  const [extraMattressCount, setExtraMattressCount] = useState<number>(0);
+  const [childWithBedCount, setChildWithBedCount] = useState<number>(0);
+  const [childNoBedCount, setChildNoBedCount] = useState<number>(0);
   const [leadId, setLeadId] = useState<string | undefined>(undefined);
+
+  // Smart handler when adults count changes (does not force roomsCount = Math.ceil(val/2))
+  const handleAdultsChange = (val: number) => {
+    const newAdults = Math.max(1, val);
+    setAdults(newAdults);
+    if (newAdults === 3) {
+      // For 3 adults, intelligently default to 1 room with 1 extra bed instead of forcing 2 rooms
+      setRoomsCount(1);
+      setExtraBedsCount(1);
+      setExtraMattressCount(0);
+      setRoomSharingType('double_with_extra_bed');
+    } else if (newAdults === 2) {
+      setRoomsCount(1);
+      setExtraBedsCount(0);
+      setExtraMattressCount(0);
+      setRoomSharingType('double');
+    } else if (newAdults === 1) {
+      setRoomsCount(1);
+      setExtraBedsCount(0);
+      setExtraMattressCount(0);
+      setRoomSharingType('single');
+    } else if (newAdults === 4) {
+      setRoomsCount(2);
+      setExtraBedsCount(0);
+      setExtraMattressCount(0);
+      setRoomSharingType('double');
+    } else {
+      const base = Math.max(1, Math.floor(newAdults / 2));
+      const rem = newAdults % 2;
+      setRoomsCount(base);
+      setExtraBedsCount(rem);
+      setExtraMattressCount(0);
+      setRoomSharingType(rem > 0 ? 'double_with_extra_bed' : 'double');
+    }
+  };
+
+  // Smart handler when children count changes
+  const handleChildrenChange = (val: number) => {
+    const newChildren = Math.max(0, val);
+    setChildren(newChildren);
+    if (newChildren === 0) {
+      setChildWithBedCount(0);
+      setChildNoBedCount(0);
+    } else {
+      if (childWithBedCount + childNoBedCount === 0) {
+        setChildNoBedCount(newChildren);
+      } else {
+        const diff = newChildren - (childWithBedCount + childNoBedCount);
+        if (diff > 0) {
+          setChildNoBedCount((prev) => prev + diff);
+        } else if (diff < 0) {
+          const redFromNoBed = Math.min(childNoBedCount, Math.abs(diff));
+          setChildNoBedCount((prev) => prev - redFromNoBed);
+          const remainingRed = Math.abs(diff) - redFromNoBed;
+          if (remainingRed > 0) {
+            setChildWithBedCount((prev) => Math.max(0, prev - remainingRed));
+          }
+        }
+      }
+    }
+  };
 
   // Auto-calculated End Date strictly derived from Start Date + Nights
   const endDate = useMemo(() => {
@@ -233,6 +302,13 @@ function ItineraryBuilderContent() {
   const [builderStep3View, setBuilderStep3View] = useState<'individual' | 'grouped'>('individual');
 
   const [savedSuccessMsg, setSavedSuccessMsg] = useState<string | null>(null);
+  const [restoredDraftMsg, setRestoredDraftMsg] = useState<string | null>(null);
+
+  // Guards against repeatedly re-running loads and wiping in-progress user edits
+  const hasLoadedQuoteRef = useRef<string | null>(null);
+  const hasLoadedLeadRef = useRef<string | null>(null);
+  const hasLoadedTemplateRef = useRef<string | null>(null);
+  const hasCheckedDraftRef = useRef(false);
 
   // Start Date change handler: updates all existing day dates sequentially
   const handleStartDateChange = (newDate: string) => {
@@ -245,8 +321,11 @@ function ItineraryBuilderContent() {
     );
   };
 
-  // Nights change handler: adjusts days array dynamically
+  // Nights change handler: adjusts days array dynamically without destructive truncation on transient keystrokes
   const handleNightsChange = (newNights: number) => {
+    if (!newNights || isNaN(newNights) || newNights < 1) {
+      return;
+    }
     const validNights = Math.max(1, Math.min(45, newNights));
     setNights(validNights);
     const targetDays = validNights + 1;
@@ -403,11 +482,12 @@ function ItineraryBuilderContent() {
     setTimeout(() => setSavedSuccessMsg(null), 4000);
   };
 
-  // Load from existing quotation if editQuoteId is passed
+  // Load from existing quotation if editQuoteId is passed (guarded to only load once per ID)
   useEffect(() => {
-    if (editQuoteId) {
+    if (editQuoteId && hasLoadedQuoteRef.current !== editQuoteId) {
       const q = quotations.find((quote) => quote.id === editQuoteId);
       if (q) {
+        hasLoadedQuoteRef.current = editQuoteId;
         setGuestName(q.guestName);
         setGuestPhone(q.guestPhone);
         setGuestEmail(q.guestEmail || '');
@@ -419,6 +499,11 @@ function ItineraryBuilderContent() {
         setChildren(q.children);
         setInfants(q.infants);
         setRoomsCount(q.roomsCount);
+        if (q.roomSharingType) setRoomSharingType(q.roomSharingType);
+        if (typeof q.extraBedsCount === 'number') setExtraBedsCount(q.extraBedsCount);
+        if (typeof q.extraMattressCount === 'number') setExtraMattressCount(q.extraMattressCount);
+        if (typeof q.childWithBedCount === 'number') setChildWithBedCount(q.childWithBedCount);
+        if (typeof q.childNoBedCount === 'number') setChildNoBedCount(q.childNoBedCount);
         setRouteStops(q.routeStops);
         setSelectedVehicleId(q.vehicleId || vehicles[0]?.id || '');
         setDays(q.days);
@@ -435,9 +520,10 @@ function ItineraryBuilderContent() {
         setCustomization(q.customization);
         setLeadId(q.leadId);
       }
-    } else if (fromLeadId) {
+    } else if (fromLeadId && hasLoadedLeadRef.current !== fromLeadId) {
       const lead = leads.find((l) => l.id === fromLeadId);
       if (lead) {
+        hasLoadedLeadRef.current = fromLeadId;
         setLeadId(lead.id);
         setGuestName(lead.guestName);
         setGuestPhone(lead.phone);
@@ -448,7 +534,21 @@ function ItineraryBuilderContent() {
         setAdults(lead.adults);
         setChildren(lead.children);
         setInfants(lead.infants || 0);
-        setRoomsCount(Math.ceil(lead.adults / 2));
+        if (lead.adults === 3) {
+          setRoomsCount(1);
+          setExtraBedsCount(1);
+          setExtraMattressCount(0);
+          setRoomSharingType('double_with_extra_bed');
+        } else {
+          setRoomsCount(Math.max(1, Math.floor(lead.adults / 2)));
+          setExtraBedsCount(lead.adults % 2 === 1 && lead.adults > 1 ? 1 : 0);
+          setExtraMattressCount(0);
+          setRoomSharingType(lead.adults % 2 === 1 && lead.adults > 1 ? 'double_with_extra_bed' : 'double');
+        }
+        if (lead.children > 0) {
+          setChildNoBedCount(lead.children);
+          setChildWithBedCount(0);
+        }
         setTripTitle(`${lead.destination} Tailored Holiday`);
         if (lead.startDate) {
           setDays((prev) =>
@@ -462,16 +562,62 @@ function ItineraryBuilderContent() {
     }
   }, [editQuoteId, fromLeadId, quotations, leads, vehicles]);
 
-  // Auto-load template if templateId is in query params
+  // Auto-load template if templateId is in query params (guarded to load once)
   const templateQueryParam = searchParams.get('templateId') || searchParams.get('template');
   useEffect(() => {
-    if (templateQueryParam && tripTemplates.length > 0) {
+    if (templateQueryParam && hasLoadedTemplateRef.current !== templateQueryParam && tripTemplates.length > 0) {
       const foundTmpl = tripTemplates.find((t) => t.id === templateQueryParam);
       if (foundTmpl) {
+        hasLoadedTemplateRef.current = templateQueryParam;
         handleApplyTemplate(foundTmpl);
       }
     }
   }, [templateQueryParam, tripTemplates]);
+
+  // Check and restore active draft from localStorage if starting a fresh itinerary
+  useEffect(() => {
+    if (editQuoteId || fromLeadId || templateQueryParam || hasCheckedDraftRef.current) return;
+    hasCheckedDraftRef.current = true;
+    try {
+      const saved = localStorage.getItem('desi_journey_builder_active_draft');
+      if (saved) {
+        const draft = JSON.parse(saved);
+        if (draft && Array.isArray(draft.days) && draft.days.length > 0) {
+          if (draft.guestName) setGuestName(draft.guestName);
+          if (draft.guestPhone) setGuestPhone(draft.guestPhone);
+          if (draft.guestEmail) setGuestEmail(draft.guestEmail);
+          if (draft.tripTitle) setTripTitle(draft.tripTitle);
+          if (draft.startDate) setStartDate(draft.startDate);
+          if (draft.nights) setNights(draft.nights);
+          if (draft.adults) setAdults(draft.adults);
+          if (draft.children) setChildren(draft.children);
+          if (draft.infants) setInfants(draft.infants);
+          if (draft.roomsCount) setRoomsCount(draft.roomsCount);
+          if (draft.roomSharingType) setRoomSharingType(draft.roomSharingType);
+          if (typeof draft.extraBedsCount === 'number') setExtraBedsCount(draft.extraBedsCount);
+          if (typeof draft.extraMattressCount === 'number') setExtraMattressCount(draft.extraMattressCount);
+          if (typeof draft.childWithBedCount === 'number') setChildWithBedCount(draft.childWithBedCount);
+          if (typeof draft.childNoBedCount === 'number') setChildNoBedCount(draft.childNoBedCount);
+          if (draft.routeStops && draft.routeStops.length > 0) setRouteStops(draft.routeStops);
+          if (draft.selectedVehicleId) setSelectedVehicleId(draft.selectedVehicleId);
+          setDays(draft.days);
+          if (draft.costingItems) setCostingItems(draft.costingItems);
+          if (draft.markupType) setMarkupType(draft.markupType);
+          if (draft.markupValue) setMarkupValue(draft.markupValue);
+          if (draft.inclusions) setInclusions(draft.inclusions);
+          if (draft.exclusions) setExclusions(draft.exclusions);
+          if (draft.terms) setTerms(draft.terms);
+          if (draft.customization) setCustomization(draft.customization);
+          if (draft.currentStep && draft.currentStep >= 1 && draft.currentStep <= 8) {
+            setCurrentStep(draft.currentStep);
+          }
+          setRestoredDraftMsg('Resumed your in-progress itinerary draft.');
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to restore builder draft:', e);
+    }
+  }, [editQuoteId, fromLeadId, templateQueryParam]);
 
 
   // If days are empty, seed days based on duration
@@ -530,17 +676,29 @@ function ItineraryBuilderContent() {
     days.forEach((day, index) => {
       if (index === days.length - 1 && day.dayType === 'Departure') return; // Last day check-out
       const hotelObj = hotels.find((h) => h.id === day.hotelId);
+      const dayRooms = day.roomsCount || roomsCount;
+      const dayExtraBeds = typeof day.extraBedsCount === 'number' ? day.extraBedsCount : extraBedsCount;
+      const dayExtraMattress = typeof day.extraMattressCount === 'number' ? day.extraMattressCount : extraMattressCount;
+      const dayCwb = typeof day.childWithBedCount === 'number' ? day.childWithBedCount : childWithBedCount;
+      const dayCnb = typeof day.childNoBedCount === 'number' ? day.childNoBedCount : childNoBedCount;
+      const daySharingType = day.roomSharingType || roomSharingType;
+
       const dayHotelCost = calculateHotelDayCost(
         hotelObj,
         day.roomCategory || 'Deluxe',
         day.mealPlan,
-        roomsCount,
-        adults
+        dayRooms,
+        adults,
+        dayExtraBeds,
+        dayExtraMattress,
+        dayCwb,
+        dayCnb,
+        daySharingType
       );
       items.push({
         id: `cost-hotel-${day.id}`,
         category: 'Accommodation',
-        title: `Day ${day.dayNumber} Stay: ${hotelObj ? hotelObj.name : day.hotelDestination} (${day.mealPlan} - ${roomsCount} Room)`,
+        title: `Day ${day.dayNumber} Stay: ${hotelObj ? hotelObj.name : day.hotelDestination} (${day.mealPlan} - ${dayRooms} Room)`,
         supplierCost: dayHotelCost.cost,
         notes: dayHotelCost.description,
       });
@@ -575,7 +733,21 @@ function ItineraryBuilderContent() {
     });
 
     setCostingItems(items);
-  }, [days, hotels, vehicles, selectedVehicleId, duration.days, roomsCount, adults, manualVehicleCost]);
+  }, [
+    days,
+    hotels,
+    vehicles,
+    selectedVehicleId,
+    duration.days,
+    roomsCount,
+    adults,
+    extraBedsCount,
+    extraMattressCount,
+    childWithBedCount,
+    childNoBedCount,
+    roomSharingType,
+    manualVehicleCost,
+  ]);
 
   // Derived live calculations
   const liveCosting = useMemo(() => {
@@ -627,6 +799,11 @@ function ItineraryBuilderContent() {
       children,
       infants,
       roomsCount,
+      roomSharingType,
+      extraBedsCount,
+      extraMattressCount,
+      childWithBedCount,
+      childNoBedCount,
       vehicleId: selectedVehicleId,
       vehicleName: selectedVeh ? selectedVeh.displayName : 'Private AC Vehicle',
       days: alignedDays,
@@ -663,6 +840,11 @@ function ItineraryBuilderContent() {
     children,
     infants,
     roomsCount,
+    roomSharingType,
+    extraBedsCount,
+    extraMattressCount,
+    childWithBedCount,
+    childNoBedCount,
     selectedVehicleId,
     vehicles,
     days,
@@ -680,6 +862,99 @@ function ItineraryBuilderContent() {
     return sanitizeQuotationForCustomer(currentQuoteObject, hotels);
   }, [currentQuoteObject, hotels]);
 
+  // Autosave active draft to localStorage continuously while making proposal
+  useEffect(() => {
+    if (editQuoteId) return; // Don't overwrite draft key with quote edits
+    if (days.length === 0) return;
+    try {
+      const draftData = {
+        guestName,
+        guestPhone,
+        guestEmail,
+        tripTitle,
+        startDate,
+        nights,
+        adults,
+        children,
+        infants,
+        roomsCount,
+        roomSharingType,
+        extraBedsCount,
+        extraMattressCount,
+        childWithBedCount,
+        childNoBedCount,
+        routeStops,
+        selectedVehicleId,
+        days,
+        costingItems,
+        markupType,
+        markupValue,
+        gstEnabled,
+        gstRate,
+        discountAmount,
+        advancePercent,
+        inclusions,
+        exclusions,
+        terms,
+        customization,
+        currentStep,
+        savedAt: new Date().toISOString(),
+      };
+      localStorage.setItem('desi_journey_builder_active_draft', JSON.stringify(draftData));
+    } catch (e) {
+      console.warn('Draft autosave error:', e);
+    }
+  }, [
+    editQuoteId,
+    guestName,
+    guestPhone,
+    guestEmail,
+    tripTitle,
+    startDate,
+    nights,
+    adults,
+    children,
+    infants,
+    roomsCount,
+    roomSharingType,
+    extraBedsCount,
+    extraMattressCount,
+    childWithBedCount,
+    childNoBedCount,
+    routeStops,
+    selectedVehicleId,
+    days,
+    costingItems,
+    markupType,
+    markupValue,
+    gstEnabled,
+    gstRate,
+    discountAmount,
+    advancePercent,
+    inclusions,
+    exclusions,
+    terms,
+    customization,
+    currentStep,
+  ]);
+
+  // Start fresh handler to clear restored draft
+  const handleStartFreshDraft = () => {
+    try {
+      localStorage.removeItem('desi_journey_builder_active_draft');
+    } catch {}
+    setGuestName('');
+    setGuestPhone('');
+    setGuestEmail('');
+    setTripTitle('');
+    const today = new Date().toISOString().split('T')[0];
+    setStartDate(today);
+    setNights(5);
+    setDays([]);
+    setCurrentStep(1);
+    setRestoredDraftMsg(null);
+  };
+
   // Save Quotation Handler
   const handleSaveQuotation = () => {
     if (editQuoteId) {
@@ -687,6 +962,9 @@ function ItineraryBuilderContent() {
       setSavedSuccessMsg('Quotation successfully updated!');
     } else {
       const created = createQuotation(currentQuoteObject);
+      try {
+        localStorage.removeItem('desi_journey_builder_active_draft');
+      } catch {}
       setSavedSuccessMsg(`Quotation saved with ID: ${created.quoteNumber}`);
       router.push(`/itineraries/${created.id}/preview`);
       return;
@@ -940,6 +1218,25 @@ function ItineraryBuilderContent() {
         </div>
       </div>
 
+      {/* Restored Draft Alert Banner */}
+      {restoredDraftMsg && (
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-900 shadow-2xs animate-in fade-in">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>
+              <strong>Draft Preserved:</strong> {restoredDraftMsg} All your day-wise timeline customizations and settings stay right where you left them.
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={handleStartFreshDraft}
+            className="text-[11px] font-bold text-rose-700 hover:text-rose-900 underline px-2 py-0.5 rounded hover:bg-rose-50 self-start sm:self-auto"
+          >
+            Discard &amp; Start Fresh
+          </button>
+        </div>
+      )}
+
       {/* STEP CONTENT CONTAINER */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Main Work Area (Left 2 Cols) */}
@@ -1042,8 +1339,20 @@ function ItineraryBuilderContent() {
                       type="number"
                       min="1"
                       max="45"
-                      value={nights}
-                      onChange={(e) => handleNightsChange(Number(e.target.value))}
+                      value={nights || ''}
+                      onChange={(e) => {
+                        const val = parseInt(e.target.value, 10);
+                        if (!isNaN(val) && val >= 1) {
+                          handleNightsChange(val);
+                        } else if (e.target.value === '') {
+                          setNights('' as any);
+                        }
+                      }}
+                      onBlur={() => {
+                        if (!nights || isNaN(Number(nights)) || Number(nights) < 1) {
+                          handleNightsChange(days.length > 1 ? days.length - 1 : 5);
+                        }
+                      }}
                       className="w-full px-3 py-1.5 rounded-lg border border-stone-200 bg-white text-xs outline-hidden focus:border-forest-600 font-bold text-forest-900"
                     />
                   </div>
@@ -1098,12 +1407,8 @@ function ItineraryBuilderContent() {
                     min="1"
                     max="50"
                     value={adults}
-                    onChange={(e) => {
-                      const val = Number(e.target.value);
-                      setAdults(val);
-                      setRoomsCount(Math.ceil(val / 2));
-                    }}
-                    className="w-full px-3 py-1.5 rounded-lg border border-stone-200 text-xs outline-hidden focus:border-forest-600"
+                    onChange={(e) => handleAdultsChange(Number(e.target.value))}
+                    className="w-full px-3 py-1.5 rounded-lg border border-stone-200 text-xs outline-hidden focus:border-forest-600 font-semibold"
                   />
                 </div>
                 <div>
@@ -1113,7 +1418,7 @@ function ItineraryBuilderContent() {
                     min="0"
                     max="20"
                     value={children}
-                    onChange={(e) => setChildren(Number(e.target.value))}
+                    onChange={(e) => handleChildrenChange(Number(e.target.value))}
                     className="w-full px-3 py-1.5 rounded-lg border border-stone-200 text-xs outline-hidden focus:border-forest-600"
                   />
                 </div>
@@ -1135,9 +1440,299 @@ function ItineraryBuilderContent() {
                     min="1"
                     max="25"
                     value={roomsCount}
-                    onChange={(e) => setRoomsCount(Number(e.target.value))}
-                    className="w-full px-3 py-1.5 rounded-lg border border-stone-200 text-xs outline-hidden focus:border-forest-600"
+                    onChange={(e) => {
+                      const rc = Math.max(1, Number(e.target.value));
+                      setRoomsCount(rc);
+                    }}
+                    className="w-full px-3 py-1.5 rounded-lg border border-stone-200 text-xs outline-hidden focus:border-forest-600 font-bold text-forest-900"
                   />
+                </div>
+              </div>
+
+              {/* Room Occupancy & Bedding Configuration Section */}
+              <div className="p-4 rounded-xl border border-forest-200 bg-forest-50/50 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <h3 className="font-bold text-forest-900 text-xs flex items-center gap-1.5">
+                      <span>🛏️</span> Room & Bedding Layout for {adults} Adults {children > 0 ? `+ ${children} Children` : ''}
+                    </h3>
+                    <p className="text-[11px] text-stone-500">
+                      Configure room occupancy, extra bed, or extra mattress. Accommodation rates adapt automatically to your selection.
+                    </p>
+                  </div>
+                  <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-forest-100 text-forest-800 text-[11px] font-bold">
+                    Active: {getRoomOccupancySummary(roomsCount, roomSharingType, extraBedsCount, extraMattressCount, childWithBedCount, childNoBedCount)}
+                  </div>
+                </div>
+
+                {/* Quick Presets for 3 Adults */}
+                {adults === 3 && (
+                  <div className="space-y-1.5">
+                    <span className="text-[10px] uppercase font-bold text-stone-500 tracking-wider">
+                      Recommended 3-Pax Bedding Options:
+                    </span>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setRoomsCount(1);
+                          setExtraBedsCount(1);
+                          setExtraMattressCount(0);
+                          setRoomSharingType('double_with_extra_bed');
+                        }}
+                        className={`p-2.5 rounded-lg border text-left transition-all ${
+                          roomsCount === 1 && extraBedsCount === 1 && extraMattressCount === 0 && roomSharingType === 'double_with_extra_bed'
+                            ? 'border-forest-600 bg-white ring-2 ring-forest-500/20 shadow-xs'
+                            : 'border-stone-200 bg-white/70 hover:bg-white text-stone-700'
+                        }`}
+                      >
+                        <div className="font-bold text-xs text-forest-900">1 Room + Extra Bed</div>
+                        <div className="text-[10px] text-stone-500">Double room + 1 adult bed with cot</div>
+                        <div className="mt-1 text-[10px] font-semibold text-emerald-700">Most Popular</div>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setRoomsCount(1);
+                          setExtraBedsCount(0);
+                          setExtraMattressCount(1);
+                          setRoomSharingType('double_with_mattress');
+                        }}
+                        className={`p-2.5 rounded-lg border text-left transition-all ${
+                          roomsCount === 1 && extraMattressCount === 1 && extraBedsCount === 0 && roomSharingType === 'double_with_mattress'
+                            ? 'border-forest-600 bg-white ring-2 ring-forest-500/20 shadow-xs'
+                            : 'border-stone-200 bg-white/70 hover:bg-white text-stone-700'
+                        }`}
+                      >
+                        <div className="font-bold text-xs text-forest-900">1 Room + Extra Mattress</div>
+                        <div className="text-[10px] text-stone-500">Double room + 1 floor mattress (no cot)</div>
+                        <div className="mt-1 text-[10px] font-semibold text-amber-700">Budget Friendly</div>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setRoomsCount(1);
+                          setExtraBedsCount(0);
+                          setExtraMattressCount(0);
+                          setRoomSharingType('triple');
+                        }}
+                        className={`p-2.5 rounded-lg border text-left transition-all ${
+                          roomsCount === 1 && roomSharingType === 'triple'
+                            ? 'border-forest-600 bg-white ring-2 ring-forest-500/20 shadow-xs'
+                            : 'border-stone-200 bg-white/70 hover:bg-white text-stone-700'
+                        }`}
+                      >
+                        <div className="font-bold text-xs text-forest-900">1 Triple Room</div>
+                        <div className="text-[10px] text-stone-500">Fixed 3-bed triple room tariff</div>
+                        <div className="mt-1 text-[10px] font-semibold text-indigo-700">Triple Tariff</div>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setRoomsCount(2);
+                          setExtraBedsCount(0);
+                          setExtraMattressCount(0);
+                          setRoomSharingType('separate_rooms');
+                        }}
+                        className={`p-2.5 rounded-lg border text-left transition-all ${
+                          roomsCount === 2 && extraBedsCount === 0 && extraMattressCount === 0
+                            ? 'border-forest-600 bg-white ring-2 ring-forest-500/20 shadow-xs'
+                            : 'border-stone-200 bg-white/70 hover:bg-white text-stone-700'
+                        }`}
+                      >
+                        <div className="font-bold text-xs text-forest-900">2 Separate Rooms</div>
+                        <div className="text-[10px] text-stone-500">1 Double room + 1 Single/Double room</div>
+                        <div className="mt-1 text-[10px] font-semibold text-purple-700">Full Privacy</div>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Presets for 2 Adults */}
+                {adults === 2 && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-[10px] uppercase font-bold text-stone-500">Bedding:</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setRoomsCount(1);
+                        setExtraBedsCount(0);
+                        setExtraMattressCount(0);
+                        setRoomSharingType('double');
+                      }}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold border ${
+                        roomsCount === 1 && extraBedsCount === 0 && extraMattressCount === 0
+                          ? 'bg-white border-forest-600 text-forest-900 shadow-2xs'
+                          : 'bg-transparent border-stone-200 text-stone-600'
+                      }`}
+                    >
+                      1 Room (Double Occupancy)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setRoomsCount(2);
+                        setExtraBedsCount(0);
+                        setExtraMattressCount(0);
+                        setRoomSharingType('separate_rooms');
+                      }}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold border ${
+                        roomsCount === 2
+                          ? 'bg-white border-forest-600 text-forest-900 shadow-2xs'
+                          : 'bg-transparent border-stone-200 text-stone-600'
+                      }`}
+                    >
+                      2 Separate Single Rooms
+                    </button>
+                  </div>
+                )}
+
+                {/* Fine-Tuning Steppers Row */}
+                <div className="pt-2 border-t border-forest-200/60 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                  <div>
+                    <label className="text-[11px] font-semibold text-stone-700 block mb-1">
+                      Adult Extra Bed (with cot)
+                    </label>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setExtraBedsCount((c) => Math.max(0, c - 1));
+                          if (extraBedsCount - 1 > 0) setRoomSharingType('double_with_extra_bed');
+                        }}
+                        className="w-7 h-7 rounded border border-stone-200 bg-white font-bold hover:bg-stone-100 flex items-center justify-center text-stone-700"
+                      >
+                        -
+                      </button>
+                      <input
+                        type="number"
+                        min="0"
+                        value={extraBedsCount}
+                        onChange={(e) => {
+                          const val = Math.max(0, Number(e.target.value));
+                          setExtraBedsCount(val);
+                          if (val > 0) setRoomSharingType('double_with_extra_bed');
+                        }}
+                        className="w-12 text-center py-1 rounded border border-stone-200 bg-white font-bold text-forest-900 text-xs"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setExtraBedsCount((c) => c + 1);
+                          setRoomSharingType('double_with_extra_bed');
+                        }}
+                        className="w-7 h-7 rounded border border-stone-200 bg-white font-bold hover:bg-stone-100 flex items-center justify-center text-stone-700"
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-semibold text-stone-700 block mb-1">
+                      Extra Mattress (without cot)
+                    </label>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setExtraMattressCount((c) => Math.max(0, c - 1));
+                          if (extraMattressCount - 1 > 0) setRoomSharingType('double_with_mattress');
+                        }}
+                        className="w-7 h-7 rounded border border-stone-200 bg-white font-bold hover:bg-stone-100 flex items-center justify-center text-stone-700"
+                      >
+                        -
+                      </button>
+                      <input
+                        type="number"
+                        min="0"
+                        value={extraMattressCount}
+                        onChange={(e) => {
+                          const val = Math.max(0, Number(e.target.value));
+                          setExtraMattressCount(val);
+                          if (val > 0) setRoomSharingType('double_with_mattress');
+                        }}
+                        className="w-12 text-center py-1 rounded border border-stone-200 bg-white font-bold text-forest-900 text-xs"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setExtraMattressCount((c) => c + 1);
+                          setRoomSharingType('double_with_mattress');
+                        }}
+                        className="w-7 h-7 rounded border border-stone-200 bg-white font-bold hover:bg-stone-100 flex items-center justify-center text-stone-700"
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
+
+                  {children > 0 && (
+                    <>
+                      <div>
+                        <label className="text-[11px] font-semibold text-emerald-800 block mb-1">
+                          Child with Bed (CWB)
+                        </label>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => setChildWithBedCount((c) => Math.max(0, c - 1))}
+                            className="w-7 h-7 rounded border border-emerald-300 bg-white font-bold hover:bg-emerald-50 flex items-center justify-center text-emerald-800"
+                          >
+                            -
+                          </button>
+                          <input
+                            type="number"
+                            min="0"
+                            max={children}
+                            value={childWithBedCount}
+                            onChange={(e) => setChildWithBedCount(Math.min(children, Math.max(0, Number(e.target.value))))}
+                            className="w-12 text-center py-1 rounded border border-emerald-300 bg-emerald-50/50 font-bold text-emerald-900 text-xs"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setChildWithBedCount((c) => Math.min(children, c + 1))}
+                            className="w-7 h-7 rounded border border-emerald-300 bg-white font-bold hover:bg-emerald-50 flex items-center justify-center text-emerald-800"
+                          >
+                            +
+                          </button>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="text-[11px] font-semibold text-stone-700 block mb-1">
+                          Child No Bed (CNB)
+                        </label>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => setChildNoBedCount((c) => Math.max(0, c - 1))}
+                            className="w-7 h-7 rounded border border-stone-200 bg-white font-bold hover:bg-stone-100 flex items-center justify-center text-stone-700"
+                          >
+                            -
+                          </button>
+                          <input
+                            type="number"
+                            min="0"
+                            max={children}
+                            value={childNoBedCount}
+                            onChange={(e) => setChildNoBedCount(Math.min(children, Math.max(0, Number(e.target.value))))}
+                            className="w-12 text-center py-1 rounded border border-stone-200 bg-white font-bold text-forest-900 text-xs"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setChildNoBedCount((c) => Math.min(children, c + 1))}
+                            className="w-7 h-7 rounded border border-stone-200 bg-white font-bold hover:bg-stone-100 flex items-center justify-center text-stone-700"
+                          >
+                            +
+                          </button>
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
             </div>
@@ -1519,7 +2114,17 @@ function ItineraryBuilderContent() {
                                 </span>
                                 <span className="text-[10px] text-stone-500 font-medium">({formatIndianDate(day.date)})</span>
                               </div>
-                              <span className="text-[11px] text-stone-600 font-medium">{day.routeTitle}</span>
+                              <div className="flex items-center gap-2">
+                                <span className="text-[11px] text-stone-600 font-medium">{day.routeTitle}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => setBuilderStep3View('individual')}
+                                  className="text-[10px] font-bold text-forest-800 bg-white border border-stone-200 px-2 py-0.5 rounded hover:bg-forest-50 flex items-center gap-1 shadow-2xs transition-colors"
+                                >
+                                  <span>Edit Day {day.dayNumber}</span>
+                                  <ChevronRight className="w-3 h-3" />
+                                </button>
+                              </div>
                             </div>
 
                             {day.activities.length > 0 ? (
@@ -1825,9 +2430,14 @@ function ItineraryBuilderContent() {
                         <div className="font-bold text-forest-900 text-xs">
                           Night {day.dayNumber} ({formatIndianDate(day.date)}): {day.hotelDestination} Stay
                         </div>
-                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-forest-100 text-forest-800">
-                          {roomsCount} Room(s)
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-forest-100 text-forest-800">
+                            {roomsCount} Room(s)
+                          </span>
+                          <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-white border border-stone-200 text-stone-600 shadow-2xs">
+                            {getRoomOccupancySummary(roomsCount, roomSharingType, extraBedsCount, extraMattressCount, childWithBedCount, childNoBedCount)}
+                          </span>
+                        </div>
                       </div>
 
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -1900,10 +2510,35 @@ function ItineraryBuilderContent() {
                           </div>
                           <div className="text-right">
                             <span className="text-[10px] text-stone-400 block">Estimated Wholesale Rate:</span>
-                            <span className="font-bold text-forest-900 tabular-nums">
+                            <span className="font-bold text-forest-900 tabular-nums text-sm">
                               {formatINR(
-                                calculateHotelDayCost(selectedHotelObj, day.roomCategory || 'Deluxe', day.mealPlan, roomsCount, adults).cost
+                                calculateHotelDayCost(
+                                  selectedHotelObj,
+                                  day.roomCategory || 'Deluxe',
+                                  day.mealPlan,
+                                  roomsCount,
+                                  adults,
+                                  extraBedsCount,
+                                  extraMattressCount,
+                                  childWithBedCount,
+                                  childNoBedCount,
+                                  roomSharingType
+                                ).cost
                               )}
+                            </span>
+                            <span className="text-[9px] text-stone-500 block mt-0.5">
+                              {calculateHotelDayCost(
+                                selectedHotelObj,
+                                day.roomCategory || 'Deluxe',
+                                day.mealPlan,
+                                roomsCount,
+                                adults,
+                                extraBedsCount,
+                                extraMattressCount,
+                                childWithBedCount,
+                                childNoBedCount,
+                                roomSharingType
+                              ).description.split(' - ')[1] || ''}
                             </span>
                           </div>
                         </div>
